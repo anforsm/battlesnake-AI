@@ -113,7 +113,7 @@ def move(game_state: typing.Dict) -> typing.Dict:
 
 # Start server when `python main.py` is run
 if __name__ == "__main__":
-    duo1 = SnakeDuo("Team 1", "#FF0000", CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
+    duo1 = SnakeDuo("Team 1", "#FF0000", CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=False)
 
     duo2 = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 3"), CSnake("4", "Snake 4"), save_replay=False)
 
