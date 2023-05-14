@@ -39,12 +39,19 @@ class Cell:
     def is_safe(self):
         return self.snake is None and not self.hazard
     
+    def clear_snake_info(self):
+        self.set_snake(None)
+        self.is_snake_head = False
+        self.set_closest_snakes(None, None)
+        return self
+    
     def clear(self):
         self.set_food(False)
         self.set_hazard(False)
         self.set_snake(None)
         self.set_color(None)
         self.set_closest_snakes(None, None)
+        return self
     
     def copy(self):
         new_cell = Cell(self.x, self.y)
@@ -55,7 +62,58 @@ class Cell:
         new_cell.closest_snakes = self.closest_snakes
         new_cell.closest_snake_distance = self.closest_snake_distance
         return new_cell
+    
+class GeneralBoard:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.snakes = []
 
+        self.create_cells()
+    
+    def get_cell(self, x, y):
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            return None
+        return self.cells[x][y]
+    
+    def create_cells(self):
+        self.cells = []
+        self.all_cells = []
+        for x in range(self.width):
+            self.cells.append([])
+            for y in range(self.height):
+                self.cells[x].append(Cell(x, y))
+                self.all_cells.append(self.cells[x][y])
+    
+    def add_snake(self, snake):
+        self.snakes.append(snake)
+        self.place_snake(snake)
+
+    def place_snakes(self):
+        for snake in self.snakes:
+            for i, body_part in enumerate(snake.body):
+                cell = self.get_cell(body_part["x"], body_part["y"])
+                cell.set_snake(snake, i == 0)
+    
+    def get_possible_subtrees(self, snake):
+        possible_subtrees = []
+        for snake in self.snakes:
+            for direction in ["up", "down", "left", "right"]:
+                new_board = self.copy()
+                new_board.move_snake(snake, direction)
+                possible_subtrees.append(new_board)
+        return possible_subtrees
+    
+    def move_snake(self, snake, direction):
+        snake.move(direction)
+        self.place_snakes()
+    
+    def copy(self):
+        new_board = GeneralBoard(self.width, self.height)
+        new_board.cells = [[cell.copy().clear_snake_info() for cell in row] for row in self.cells]
+        for snake in self.snakes:
+            snake.copy_to_board(new_board)
+        return new_board
 
 
 

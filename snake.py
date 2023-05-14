@@ -24,13 +24,20 @@ class Snake():
         self.client_id = None
         self.is_enemy = True 
         self.is_dead = False
+    
+    def place_on_board(self, board):
+        self.board = board
+        self.board.add_snake(self)
 
 
     def update_state(self, snake_info):
         self.health = snake_info["health"]
-        self.length =snake_info["length"]
-        self.body = snake_info["body"]
-        self.head = snake_info["head"] 
+        self.length = snake_info["length"]
+
+        self.body = [self.board.get_cell(cell["x"], cell["y"]) for cell in snake_info["body"]]
+        self.tail = snake_info["body"][-1]
+        self.head = self.board.get_cell(snake_info["head"]["x"], snake_info["head"]["y"])
+
         self.color = snake_info["customizations"]["color"]
     
     def kill(self):
@@ -48,6 +55,21 @@ class Snake():
     
     def __eq__(self, other):
         return self.client_id == other.client_id
+    
+    def copy_to_board(self, board):
+        new_snake = Snake()
+        new_snake.client_id = self.client_id
+        new_snake.is_enemy = self.is_enemy
+        new_snake.is_dead = self.is_dead
+        new_snake.health = self.health
+        new_snake.length = self.length
+        new_snake.body = [board.get_cell(cell["x"], cell["y"]) for cell in self.body]
+        new_snake.tail = board.get_cell(self.tail["x"], self.tail["y"])
+        new_snake.head = board.get_cell(self.head["x"], self.head["y"])
+        new_snake.color = self.color
+        board.add_snake(new_snake)
+        return new_snake
+
 
 
 
