@@ -95,14 +95,21 @@ class GeneralBoard:
                 cell = self.get_cell(body_part["x"], body_part["y"])
                 cell.set_snake(snake, i == 0)
     
-    def get_possible_subtrees(self, snake):
-        possible_subtrees = []
+    def get_possible_subboards(self, snake):
+        possible_subboards = []
         for snake in self.snakes:
             for direction in ["up", "down", "left", "right"]:
                 new_board = self.copy()
-                new_board.move_snake(snake, direction)
-                possible_subtrees.append(new_board)
-        return possible_subtrees
+                new_snake = new_board.get_snake(snake.client_id)
+                new_board.move_snake(new_snake, direction)
+                possible_subboards.append(new_board)
+        return possible_subboards
+    
+    def get_snake(self, client_id):
+        for snake in self.snakes:
+            if snake.client_id == client_id:
+                return snake
+        return None
     
     def move_snake(self, snake, direction):
         snake.move(direction)
