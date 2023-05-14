@@ -37,6 +37,7 @@ class NetworkManager(metaclass=SingletonMeta):
         
         @self.app.post("/<snake_id>/move/")
         def on_move(snake_id):
+            print("[INFO] got request for move")
             return self.snake_map[snake_id].net.on_move(request.get_json())
         
         @self.app.post("/<snake_id>/end/")
@@ -61,6 +62,12 @@ class NetworkManager(metaclass=SingletonMeta):
         @self.app.route("/ping")
         def ping():
             return "pong"
+        
+        # log every request
+        @self.app.after_request
+        def log_request(response):
+            print("[INFO] got request")
+            return response
 
         self.app.run(host=host, port=port, debug=True)
 
