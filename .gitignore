@@ -131,3 +131,4 @@ dmypy.json
 board/
 board.gif
 game_states/
+replays/

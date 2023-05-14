@@ -4,6 +4,7 @@ import math
 import json
 from tqdm import trange
 import os
+from datetime import datetime
 
 class SnakeDuo():
     def __init__(self, name, color, snake1, snake2, save_replay=False):
@@ -28,6 +29,11 @@ class SnakeDuo():
 
         self.snake1_has_ended = False
         self.snake2_has_ended = False
+
+        self.game_ended = False
+
+        self.snake1_move = "up"
+        self.snake2_move = "up"
 
     
     def snakes_initialized(self):
@@ -116,6 +122,12 @@ class SnakeDuo():
             # just go in a random safe direction
             if self.get_snake_move(snake) is None:
                 self.set_snake_move(snake, safe_moves[0])
+
+        # if none of the snakes have a move, just go up
+        if self.get_snake_move(self.snake1) is None:
+            self.set_snake_move(self.snake1, "up")
+        if self.get_snake_move(self.snake2) is None:
+            self.set_snake_move(self.snake2, "up")
     
     # This is the command that is sent to the server
     def get_move(self, snake):
@@ -129,20 +141,23 @@ class SnakeDuo():
     def append_board_history(self):
         self.board_history.append(self.board.copy())
     
-    def on_end(self):
+    def on_end(self, game_state):
+        game_id = game_state["game"]["id"]
         if self.save_replay:
-            # delete everything in board directory
-            for filename in os.listdir("board"):
-                os.remove("board/"+filename)
+            # create folder for game
+            path = "./replays/"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S")+" (" + game_id[:3] + ")"
+            os.makedirs(path, exist_ok=True)
 
             for i in trange(len(self.board_history), desc="Saving replay"):
-                self.board_history[i].save_to_img(i, res="high")
+                self.board_history[i].save_to_img(path, i, res="high")
             
 
-            self.board_history[-1].create_gif()
+            self.board_history[-1].create_gif(path)
+        
+        self.game_ended = True
         
     
-    def end_team(self, snake):
+    def end_team(self, snake, game_state):
         if snake == self.snake1:
             self.snake1_has_ended = True
 
@@ -150,6 +165,6 @@ class SnakeDuo():
             self.snake2_has_ended = True
 
         if self.snake1_has_ended and self.snake2_has_ended:
-            self.on_end()
+            self.on_end(game_state)
 
 

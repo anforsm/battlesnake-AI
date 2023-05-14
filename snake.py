@@ -74,13 +74,13 @@ class ControllableSnake(Snake):
     # start is called when your Battlesnake begins a game
     def start(self, game_state):
         self.client_id = game_state["you"]["id"]
-        print("[INFO] Initialized snake " + self.name)
+        print("[INFO] Initialized snake " + str(self.id))
         self.team.initialize_team(game_state)
         return
 
     # end is called when your Battlesnake finishes a game
     def end(self, game_state):
-        self.team.end_team(self)
+        self.team.end_team(self, game_state)
         return
     
     # move is called on every turn and returns your next move
@@ -88,10 +88,8 @@ class ControllableSnake(Snake):
     # See https://docs.battlesnake.com/api/example-move for available data
     def move(self, game_state):
         self.team.update_state(game_state)
-        
         self.team.calculate_move()
         move = self.team.get_move(self)
-        print("[INFO] " + self.name + " moving " + move)
         return {"move": move}
     
     def get_safe_moves(self, board):

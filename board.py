@@ -181,7 +181,7 @@ class Board:
                 closest_distance = distance
         return closest_snakes, closest_distance
     
-    def save_to_img(self, turn, res):
+    def save_to_img(self, path, turn, res):
         from PIL import Image, ImageDraw
 
         if res == "high":
@@ -257,16 +257,17 @@ class Board:
         # flip image to match coordinate system
         #img = img.transpose(Image.FLIP_TOP_BOTTOM) 
 
-        img.save(f'./board/board_{turn}.png')
+        img.save(f'./{path}/board_{turn}.png')
     
-    def create_gif(self):
+    def create_gif(self, path):
         import imageio
         images = []
-        files = os.listdir("board")
+        files = os.listdir(path)
         files.sort(key=lambda x: int(x.split("_")[1].split(".")[0]))
         for filename in files:
-            images.append(imageio.imread("board/"+filename))
-        imageio.mimsave('board.gif', images)
+            images.append(imageio.imread(path+"/"+filename))
+        # enable infinte loop
+        imageio.mimsave(path+"/" + '_board.gif', images, loop=0)
     
     def copy(self):
         new_board = Board(self.width, self.height, self.our_snakes, self.snakes)
