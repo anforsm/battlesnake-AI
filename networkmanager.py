@@ -5,6 +5,8 @@ import logging
 from snakeduo import SnakeDuo
 from snake import Snake, ControllableSnake as CSnake
 
+our_color = "#ff4e03"
+
 class SingletonMeta(type):
     _instances = {}
 
@@ -34,7 +36,7 @@ class NetworkManager(metaclass=SingletonMeta):
             return
 
         if team_id == 1:
-            team = SnakeDuo("Team 1", "#FF0000", CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
+            team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=False)
         elif team_id == 2:
             team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
 
@@ -60,7 +62,7 @@ class NetworkManager(metaclass=SingletonMeta):
                 return ""
             
             team_id = 1 if snake_id == "1" or snake_id == "2" else 2 
-            color = "#FF0000" if team_id == 1 else "#00FF00"
+            color = our_color if team_id == 1 else "#00FF00"
             return {
                 "apiversion": "1",
                 "author": "Anton Forsman & Nils Odin",
@@ -115,6 +117,7 @@ class NetworkManager(metaclass=SingletonMeta):
 
     def start_server(self):
         host = "0.0.0.0"
+        #host = "10.10.20.13"
         port = int(os.environ.get("PORT", "8000"))
 
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
