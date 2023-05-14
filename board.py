@@ -31,13 +31,13 @@ class Cell:
         self.closest_snake_distance = distance
     
     def is_empty(self):
-        return self.snake == None and not self.food and not self.hazard
+        return self.snake is None and not self.food and not self.hazard
     
     def is_food(self):
         return self.food == True
     
     def is_safe(self):
-        return self.snake == None and not self.hazard
+        return self.snake is None and not self.hazard
     
     def clear(self):
         self.set_food(False)
@@ -72,6 +72,23 @@ class Board:
         self.create_snakes(all_snakes)
 
         self.save_replay = False
+    
+    def get_cell(self, x, y):
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            return None
+        return self.cells[x][y]
+    
+    def get_direction_between_cells(self, cell1, cell2):
+        directions = []
+        if cell1.x < cell2.x:
+            directions.append("right")
+        elif cell1.x > cell2.x:
+            directions.append("left")
+        if cell1.y < cell2.y:
+            directions.append("up")
+        elif cell1.y > cell2.y:
+            directions.append("down")
+        return directions
     
     # Check if a given cell is safe to move into
     def is_safe(self, x, y):

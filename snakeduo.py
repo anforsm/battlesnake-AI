@@ -36,6 +36,8 @@ class SnakeDuo():
     def initialize_team(self, game_state):
         if not self.snakes_initialized():
             return
+
+        print("[INFO] Initialized snake team")
         
         self.turn = game_state["turn"]
         self.board = Board(
@@ -67,76 +69,53 @@ class SnakeDuo():
             
             self.append_board_history()
     
+    def set_snake_move(self, snake, move):
+        if snake == self.snake1:
+            self.snake1_move = move
+        elif snake == self.snake2:
+            self.snake2_move = move
+    
+    def get_snake_move(self, snake):
+        if snake == self.snake1:
+            return self.snake1_move
+        elif snake == self.snake2:
+            return self.snake2_move
+    
     # This is where the move for each snake is calculated
     def calculate_move(self):
         if self.calculated_turn == self.turn:
             return
         self.calculated_turn = self.turn
 
-        # Below here we try to calculate where to go next! 
-        # Each snake tries to find the closest cell with food and move towards it while avoiding direct hits
-        if len(self.snake1.get_safe_moves(self.board)) > 0:
-            # Find closest food position and safe moves
-            closest_food = self.snake1.get_closest_food_pos(self.board)["cell"]
-            safe_moves = self.snake1.get_safe_moves(self.board)
-            
-            # Find the direction to go towards to reach the closest food (snake 1)
-            top_priority = -math.inf
-            self.snake1_move = safe_moves[0]    # this will be overwritten by a safe move towards food
-            if(closest_food.x >= self.snake1.head["x"] and "right" in safe_moves):
-                prio = abs(self.snake1.head["x"] - closest_food.x)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake1_move = "right"
-            if(closest_food.x <= self.snake1.head["x"] and "left" in safe_moves):
-                prio = abs(self.snake1.head["x"] - closest_food.x)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake1_move = "left"
-            if(closest_food.y >= self.snake1.head["y"] and "up" in safe_moves):
-                prio = abs(self.snake1.head["y"] - closest_food.y)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake1_move = "up"
-            if(closest_food.y <= self.snake1.head["y"] and "down" in safe_moves):
-                prio = abs(self.snake1.head["y"] - closest_food.y)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake1_move = "down"   
-        else:
-            self.snake1_move = "up"     # no safe direction exists so who cares where we go
-        
-        if len(self.snake2.get_safe_moves(self.board)) > 0:
-            # Find closest food position and safe moves
-            closest_food = self.snake2.get_closest_food_pos(self.board)["cell"]
-            safe_moves = self.snake2.get_safe_moves(self.board)
 
-            # Find the direction to go towards to reach the closest food (snake 1)
-            top_priority = -math.inf
-            self.snake2_move = safe_moves[0]    # this will be overwritten by a safe move towards food
-            if(closest_food.x >= self.snake2.head["x"] and "right" in safe_moves):
-                prio = abs(self.snake2.head["x"] - closest_food.x)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake2_move = "right"
-            if(closest_food.x <= self.snake2.head["x"] and "left" in safe_moves):
-                prio = abs(self.snake2.head["x"] - closest_food.x)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake2_move = "left"
-            if(closest_food.y >= self.snake2.head["y"] and "up" in safe_moves):
-                prio = abs(self.snake2.head["y"] - closest_food.y)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake2_move = "up"
-            if(closest_food.y <= self.snake2.head["y"] and "down" in safe_moves):
-                prio = abs(self.snake2.head["y"] - closest_food.y)
-                if(prio > top_priority):
-                    top_priority = prio
-                    self.snake2_move = "down"
-        else:
-            self.snake2_move = "up"     # no safe direction exists so who cares where we go
+        for snake in self.snakes:
+            self.set_snake_move(snake, None)
+
+        for snake in self.snakes:
+            safe_moves = snake.get_safe_moves(self.board)
+
+            # if there are no safe moves, just go up
+            if len(safe_moves) == 0:
+                self.set_snake_move(snake, "up")
+                continue
+
+            direction_of_food = snake.get_direction_of_food(self.board)
+
+            # if there is no food, just go in a random safe direction
+            if direction_of_food is None:
+                self.set_snake_move(snake, safe_moves[0])
+                continue
+                
+            # if there is food, go in the direction of the food if it is safe
+            for direction in direction_of_food:
+                if direction in safe_moves:
+                    self.set_snake_move(snake, direction)
+                    break
             
+            # if there is no safe direction towards the food, 
+            # just go in a random safe direction
+            if self.get_snake_move(snake) is None:
+                self.set_snake_move(snake, safe_moves[0])
     
     # This is the command that is sent to the server
     def get_move(self, snake):

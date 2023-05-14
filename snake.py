@@ -42,6 +42,12 @@ class Snake():
     
     def get_distance_to(self, x, y):
         return abs(self.head["x"] - x) + abs(self.head["y"] - y)
+    
+    def get_head_cell(self, board):
+        return board.get_cell(self.head["x"], self.head["y"])
+    
+    def __eq__(self, other):
+        return self.client_id == other.client_id
 
 
 
@@ -68,6 +74,7 @@ class ControllableSnake(Snake):
     # start is called when your Battlesnake begins a game
     def start(self, game_state):
         self.client_id = game_state["you"]["id"]
+        print("[INFO] Initialized snake " + self.name)
         self.team.initialize_team(game_state)
         return
 
@@ -84,6 +91,7 @@ class ControllableSnake(Snake):
         
         self.team.calculate_move()
         move = self.team.get_move(self)
+        print("[INFO] " + self.name + " moving " + move)
         return {"move": move}
     
     def get_safe_moves(self, board):
@@ -94,45 +102,46 @@ class ControllableSnake(Snake):
         for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
             next_head_pos = (self.head["x"] + offset[0], self.head["y"] + offset[1])
             if board.is_safe(*next_head_pos):
+                adjacent_cells = [
+                    (next_head_pos[0]+1, next_head_pos[1]),
+                    (next_head_pos[0]-1, next_head_pos[1]), 
+                    (next_head_pos[0], next_head_pos[1]+1), 
+                    (next_head_pos[0], next_head_pos[1]-1)
+                ]
+                adjacent_cells = [board.get_cell(*cell) for cell in adjacent_cells]
+                adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
 
-                safe_moves.append(move)
-                continue
+                adjacent_cell_has_enemy_snake = False
+                # check any of the adjacent cells for other snakes
+                for cell in adjacent_cells:
+                    if cell.is_snake_head and cell.snake != self:
+                        adjacent_cell_has_enemy_snake = True
+                        break
 
-                # TODO: Two snakes could both see this cell as safe and move into it in the same turn, causing them to die
-                # The code below here attempts to solve that but doesnt work for some reason!
-                 
-                # Find the 4 adjecent cells to "next_head_pos"
-                adjecent_right = (next_head_pos[0]+1, next_head_pos[1])
-                adjecent_left  = (next_head_pos[0]-1, next_head_pos[1])
-                adjecent_up    = (next_head_pos[0], next_head_pos[1]+1)
-                adjecent_down  = (next_head_pos[0], next_head_pos[1]-1)
-
-                # check the adjecent cells for other snakes (if we are going up, we dont check if adjecent_bottom is safe since we come from there)
-                if move == "up" and board.is_safe(*adjecent_right) and board.is_safe(*adjecent_left) and board.is_safe(*adjecent_up):
-                    safe_moves.append(move)
-                
-                elif move == "down" and board.is_safe(*adjecent_right) and board.is_safe(*adjecent_left) and board.is_safe(*adjecent_down):
+                if not adjacent_cell_has_enemy_snake:
                     safe_moves.append(move)
 
-                elif move == "left" and board.is_safe(*adjecent_left) and board.is_safe(*adjecent_up) and board.is_safe(*adjecent_down):
-                    safe_moves.append(move)
-        
-                elif move == "right" and board.is_safe(*adjecent_right) and board.is_safe(*adjecent_up) and board.is_safe(*adjecent_down):
-                    safe_moves.append(move)
         return safe_moves
     
     # finds the x,y-tuple where the closest food is located (manhattan distance)
     def get_closest_food_pos(self, board):
         # go through every cell and find all food (perhaps this should be precalculated in board for faster )
-        closestFood = {"distance":math.inf, "cell":None}
+        closest_food = {"distance":math.inf, "cell":None}
         for row in board.cells:
             for cell in row:
                 if cell.is_food():
                     cell_distance = abs(self.head["x"] - cell.x) + abs(self.head["y"] - cell.y)
-                    if(cell_distance < closestFood["distance"]):
-                        closestFood["cell"] = cell
-                        closestFood["distance"] = cell_distance
-        return closestFood
+                    if(cell_distance < closest_food["distance"]):
+                        closest_food["cell"] = cell
+                        closest_food["distance"] = cell_distance
+        return closest_food
+    
+    def get_direction_of_food(self, board):
+        closest_food = self.get_closest_food_pos(board)["cell"]
+        if closest_food is None:
+            return None
+        else:
+            return board.get_direction_between_cells(self.get_head_cell(board), closest_food)
 
 
     # TODO: 
