@@ -67,8 +67,8 @@ class NetworkManager(metaclass=SingletonMeta):
                 "apiversion": "1",
                 "author": "Anton Forsman & Nils Odin",
                 "color": color,
-                "head": "default",
-                "tail": "default",
+                "head": "tiger-king",
+                "tail": "tiger-tail",
             }
         
         @self.app.post("/<snake_id>/start/")
