@@ -27,6 +27,8 @@ class NetworkManager(metaclass=SingletonMeta):
 
         @self.app.get("/<snake_id>/")
         def on_info(snake_id):
+            if snake_id == "favicon.ico":
+                return ""
             return self.snake_map[snake_id].net.on_info()
         
         @self.app.post("/<snake_id>/start/")
@@ -56,6 +58,10 @@ class NetworkManager(metaclass=SingletonMeta):
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
         self.create_endpoints()
+        @self.app.route("/ping")
+        def ping():
+            return "pong"
+
         self.app.run(host=host, port=port, debug=True)
 
 network = NetworkManager()
