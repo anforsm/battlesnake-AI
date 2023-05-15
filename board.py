@@ -122,11 +122,13 @@ class GeneralBoard:
             for i in range(len(permutation)):
                 new_snake = new_board.get_snake(self.snakes[i].client_id)
                 new_board.move_snake(new_snake, permutation[i])
-                new_board.apply_rules()
+                ok_move = new_board.apply_rules()
+                if ok_move:
+                    possible_subboards.append(new_board)
         return possible_subboards
 
     def apply_rules(self):
-        pass 
+        return True
     
     def get_snake(self, client_id):
         for snake in self.snakes:
