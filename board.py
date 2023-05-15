@@ -1,4 +1,7 @@
+from IPython.display import display_png
 from snake import Snake, ControllableSnake
+from PIL import Image, ImageDraw
+import itertools
 import os
 
 
@@ -63,6 +66,9 @@ class Cell:
         new_cell.closest_snake_distance = self.closest_snake_distance
         return new_cell
     
+    def __repr__(self):
+        return f"Cell({self.x}, {self.y})"
+    
 class GeneralBoard:
     def __init__(self, width, height):
         self.width = width
@@ -88,22 +94,39 @@ class GeneralBoard:
     def add_snake(self, snake):
         self.snakes.append(snake)
         self.place_snake(snake)
+    
+    def place_snake(self, snake):
+        self.clear_snake(snake)
+        for cell in snake.body:
+            cell.set_snake(snake)
+            if snake.head == cell:
+                cell.is_snake_head = True
+    
+    def clear_snake(self, snake):
+        for cell in self.all_cells:
+            if cell.snake and cell.snake == snake:
+                cell.clear_snake_info()
 
     def place_snakes(self):
         for snake in self.snakes:
-            for i, body_part in enumerate(snake.body):
-                cell = self.get_cell(body_part["x"], body_part["y"])
-                cell.set_snake(snake, i == 0)
+            self.place_snake(snake)
+            
     
-    def get_possible_subboards(self, snake):
+    def get_possible_subboards(self):
         possible_subboards = []
-        for snake in self.snakes:
-            for direction in ["up", "down", "left", "right"]:
-                new_board = self.copy()
-                new_snake = new_board.get_snake(snake.client_id)
-                new_board.move_snake(new_snake, direction)
-                possible_subboards.append(new_board)
+        # generate all permutations of snake moves
+        directions = ["up", "down", "left", "right"]
+        permutations = itertools.product(directions, repeat=len(self.snakes))
+        for permutation in permutations:
+            new_board = self.copy()
+            for i in range(len(permutation)):
+                new_snake = new_board.get_snake(self.snakes[i].client_id)
+                new_board.move_snake(new_snake, permutation[i])
+                new_board.apply_rules()
         return possible_subboards
+
+    def apply_rules(self):
+        pass 
     
     def get_snake(self, client_id):
         for snake in self.snakes:
@@ -118,9 +141,79 @@ class GeneralBoard:
     def copy(self):
         new_board = GeneralBoard(self.width, self.height)
         new_board.cells = [[cell.copy().clear_snake_info() for cell in row] for row in self.cells]
+        new_board.all_cells = [cell.copy().clear_snake_info() for cell in self.all_cells]
+        new_board.snakes = []
         for snake in self.snakes:
             snake.copy_to_board(new_board)
         return new_board
+    
+    def _repr_png_(self):
+        cell_size = 25
+        img = Image.new('RGB', (self.width*cell_size, self.height*cell_size), color = 'white')
+        draw = ImageDraw.Draw(img)
+
+        # draw grid
+        for x in range(self.width):
+            for y in range(self.height):
+                draw.rectangle((x*cell_size, y*cell_size, x*cell_size+cell_size, y*cell_size+cell_size), fill='white', outline='black')
+        
+        # draw optional colors
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.cells[x][y].color:
+                    draw.rectangle((x*cell_size, y*cell_size, x*cell_size+cell_size, y*cell_size+cell_size), fill=self.cells[x][y].color, outline='black')
+        
+        for x in range(self.width):
+            for y in range(self.height):
+                # fill in color of closest snake, but slightly lighter
+                if self.cells[x][y].closest_snakes is not None and len(self.cells[x][y].closest_snakes) > 0:
+                    snakes_are_all_same_team = True
+                    team = self.cells[x][y].closest_snakes[0].is_enemy
+                    for snake in self.cells[x][y].closest_snakes:
+                        if not snake.is_enemy == team:
+                            snakes_are_all_same_team = False
+                            break
+
+                    if snakes_are_all_same_team: 
+                        shade = 0.7
+                        color = self.cells[x][y].closest_snakes[0].color
+                        color = color.lstrip('#')
+                        rgb = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+                        new_rgb = tuple([int((255 - rgb[i]) * shade + rgb[i]) for i in range(3)])
+                        new_color = '#%02x%02x%02x' % new_rgb
+                        draw.rectangle((x*cell_size, y*cell_size, x*cell_size+cell_size, y*cell_size+cell_size), fill=new_color, outline='black')
+
+                # # write closest snake distance to cell
+                # if self.cells[x][y].closest_snake_distance is not None:
+                #     draw.text((x*cell_size+0.1*cell_size, y*cell_size+0.1*cell_size), str(self.cells[x][y].closest_snake_distance), fill='black')
+                
+
+        
+        # draw food, small green circle
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.cells[x][y].food:
+                    draw.ellipse((x*cell_size+0.2*cell_size, y*cell_size+0.2*cell_size, x*cell_size+0.8*cell_size, y*cell_size+0.8*cell_size), fill='green', outline='green')
+        
+        # draw hazards, small red circle
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.cells[x][y].hazard:
+                    draw.ellipse((x*cell_size+0.2*cell_size, y*cell_size+0.2*cell_size, x*cell_size+0.8*cell_size, y*cell_size+0.8*cell_size), fill='red', outline='red')
+
+        # draw snakes, according to their color, in squares slightly smaller than grid size
+        for x in range(self.width):
+            for y in range(self.height):
+                if self.cells[x][y].snake:
+                    snake = self.cells[x][y].snake
+                    color = snake.color
+                    if self.cells[x][y].is_snake_head:
+                        draw.rectangle((x*cell_size+0.1*cell_size, y*cell_size+0.1*cell_size, x*cell_size+0.9*cell_size, y*cell_size+0.9*cell_size), fill=color, outline=color)
+                    else:
+                        draw.rectangle((x*cell_size+0.2*cell_size, y*cell_size+0.2*cell_size, x*cell_size+0.8*cell_size, y*cell_size+0.8*cell_size), fill=color, outline=color)
+        
+        return display_png(img)
+
 
 
 
@@ -247,7 +340,6 @@ class Board:
         return closest_snakes, closest_distance
     
     def save_to_img(self, path, turn, res):
-        from PIL import Image, ImageDraw
 
         if res == "high":
             cell_size = 50

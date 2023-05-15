@@ -20,10 +20,11 @@ class SnakeNetworkManager():
         return "ok"
 
 class Snake():
-    def __init__(self):
-        self.client_id = None
+    def __init__(self, client_id):
+        self.client_id = client_id 
         self.is_enemy = True 
         self.is_dead = False
+        self.body = []
     
     def place_on_board(self, board):
         self.board = board
@@ -35,10 +36,26 @@ class Snake():
         self.length = snake_info["length"]
 
         self.body = [self.board.get_cell(cell["x"], cell["y"]) for cell in snake_info["body"]]
-        self.tail = snake_info["body"][-1]
+        self.tail = self.body[-1]
         self.head = self.board.get_cell(snake_info["head"]["x"], snake_info["head"]["y"])
 
         self.color = snake_info["customizations"]["color"]
+
+        self.board.place_snake(self)
+    
+    def move(self, direction):
+        coordinate_offset = {
+            "up": (0, -1),
+            "down": (0, 1),
+            "left": (-1, 0),
+            "right": (1, 0)
+        }[direction]
+        # move head in direction
+        self.body.insert(0, self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1]))
+        self.head = self.body[0]
+        if not self.head.is_food():
+            self.body.pop()
+            self.tail = self.body[-1]
     
     def kill(self):
         self.is_dead = True
@@ -57,17 +74,16 @@ class Snake():
         return self.client_id == other.client_id
     
     def copy_to_board(self, board):
-        new_snake = Snake()
-        new_snake.client_id = self.client_id
+        new_snake = Snake(self.client_id)
         new_snake.is_enemy = self.is_enemy
         new_snake.is_dead = self.is_dead
         new_snake.health = self.health
         new_snake.length = self.length
-        new_snake.body = [board.get_cell(cell["x"], cell["y"]) for cell in self.body]
-        new_snake.tail = board.get_cell(self.tail["x"], self.tail["y"])
-        new_snake.head = board.get_cell(self.head["x"], self.head["y"])
+        new_snake.body = [board.get_cell(cell.x, cell.y) for cell in self.body]
+        new_snake.tail = board.get_cell(self.tail.x, self.tail.y)
+        new_snake.head = board.get_cell(self.head.x, self.head.y)
         new_snake.color = self.color
-        board.add_snake(new_snake)
+        new_snake.place_on_board(board)
         return new_snake
 
 
