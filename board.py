@@ -42,6 +42,9 @@ class Cell:
     def is_safe(self):
         return self.snake is None and not self.hazard
     
+    def is_occupied(self):
+        return self.snake is not None
+    
     def clear_snake_info(self):
         self.set_snake(None)
         self.is_snake_head = False
@@ -82,6 +85,9 @@ class GeneralBoard:
             return None
         return self.cells[x][y]
     
+    def is_valid_cell(self, x, y):
+        return x >= 0 and x < self.width and y >= 0 and y < self.height
+    
     def create_cells(self):
         self.cells = []
         self.all_cells = []
@@ -97,6 +103,8 @@ class GeneralBoard:
     
     def place_snake(self, snake):
         self.clear_snake(snake)
+        if snake.is_dead:
+            return
         for cell in snake.body:
             cell.set_snake(snake)
             if snake.head == cell:
@@ -116,19 +124,16 @@ class GeneralBoard:
         possible_subboards = []
         # generate all permutations of snake moves
         directions = ["up", "down", "left", "right"]
-        permutations = itertools.product(directions, repeat=len(self.snakes))
+        snakes_to_move = [snake for snake in self.snakes if not snake.is_dead]
+        permutations = itertools.product(directions, repeat=len(snakes_to_move))
         for permutation in permutations:
             new_board = self.copy()
             for i in range(len(permutation)):
-                new_snake = new_board.get_snake(self.snakes[i].client_id)
+                new_snake = new_board.get_snake(snakes_to_move[i].client_id)
                 new_board.move_snake(new_snake, permutation[i])
-                ok_move = new_board.apply_rules()
-                if ok_move:
-                    possible_subboards.append(new_board)
+            possible_subboards.append(new_board)
         return possible_subboards
 
-    def apply_rules(self):
-        return True
     
     def get_snake(self, client_id):
         for snake in self.snakes:

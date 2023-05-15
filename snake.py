@@ -50,25 +50,76 @@ class Snake():
             "left": (-1, 0),
             "right": (1, 0)
         }[direction]
+        self.head.is_snake_head = False
         # move head in direction
-        self.body.insert(0, self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1]))
-        self.head = self.body[0]
+        new_head = self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1])
+        if new_head is None or new_head.is_occupied():
+            self.kill()
+            return
+        self.body.insert(0, new_head)
+        self.head = new_head 
+        new_head.set_snake(self, True)
         if not self.head.is_food():
             self.body.pop()
+            self.tail.clear_snake_info()
             self.tail = self.body[-1]
+
     
     def kill(self):
+        for cell in self.body:
+            cell.clear_snake_info()
         self.is_dead = True
         self.length = 0
         self.health = 0
         self.head = None
         self.body = None
+        self.tail = None
     
     def get_distance_to(self, x, y):
         return abs(self.head["x"] - x) + abs(self.head["y"] - y)
     
     def get_head_cell(self, board):
         return board.get_cell(self.head["x"], self.head["y"])
+    
+    # returns how many moves the snake can make before it dies
+    def alternative_futures(self, direction, move_history = None):
+        if move_history is None:
+            move_history = []
+
+        depth = len(move_history)
+        if depth > 10:
+            return move_history
+        new_snake = self.simulate_move(direction)
+        if new_snake.is_dead:
+            return move_history
+        new_history = move_history + [new_snake.board]
+
+        alternate_histories = []
+        for move in new_snake.get_free_moves():
+            alternate_histories.append(new_snake.alternative_futures(move, new_history[:]))
+
+        if len(alternate_histories) == 0:
+            return alternate_histories 
+
+        best_history = max(alternate_histories, key=lambda x: len(x))
+        return best_history
+    
+    def get_free_moves(self):
+        moves = []
+        for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
+            next_head_pos = (self.head.x + offset[0], self.head.y + offset[1])
+            next_head_cell = self.board.get_cell(next_head_pos[0], next_head_pos[1])
+            if next_head_cell is not None and not next_head_cell.is_occupied():
+                moves.append(move)
+        return moves
+    
+    def simulate_move(self, direction):
+        new_board = self.board.copy()
+        new_snake = new_board.get_snake(self.client_id)
+        new_snake.move(direction)
+        return new_snake
+
+
     
     def __eq__(self, other):
         return self.client_id == other.client_id
@@ -79,12 +130,14 @@ class Snake():
         new_snake.is_dead = self.is_dead
         new_snake.health = self.health
         new_snake.length = self.length
-        new_snake.body = [board.get_cell(cell.x, cell.y) for cell in self.body]
-        new_snake.tail = board.get_cell(self.tail.x, self.tail.y)
-        new_snake.head = board.get_cell(self.head.x, self.head.y)
+        if not new_snake.is_dead:
+            new_snake.body = [board.get_cell(cell.x, cell.y) for cell in self.body]
+            new_snake.tail = board.get_cell(self.tail.x, self.tail.y)
+            new_snake.head = board.get_cell(self.head.x, self.head.y)
         new_snake.color = self.color
         new_snake.place_on_board(board)
         return new_snake
+    
 
 
 
@@ -178,55 +231,3 @@ class ControllableSnake(Snake):
             return None
         else:
             return board.get_direction_between_cells(self.get_head_cell(board), closest_food)
-
-
-    # TODO: 
-    # 1. Make a copy of the current game state
-    # 2. Calculate future gamestates with minimax and the heuristic
-    # 3. 
-
-    # TODO: 
-    # Minimax is for 1v1 games, how can we adapt it for 2v2 snakes?
-    # How can we make the 
-
-    # The start of the minmax move finder
-    def choose_move(self, game_state, depth):
-        current_state = game_state
-        temp_board = board.Board(self.team.board.width, self.team.board.height, self.team, self.team.snakes)
-        temp_snake = Snake()
-        best_move = None
-        best_value = -math.inf
-
-        for move in self.get_safe_moves:
-            
-            pass
-            
-
-    # An attempt at implementing minimax 
-    def minimax(self, board, game_state, depth):
-        # Base case 
-        if depth == 0:
-            return self.minimax_heuristic(self, board, game_state)
-        
-        # We are finding a maximum value move for our snake
-        if not self.is_enemy:
-            best_value = -math.inf
-            for move in self.get_safe_moves:
-                # TODO
-                pass
-
-            # TODO
-            pass
-
-        # Else, we are finding a minimum value move for our enemy snake
-        else:
-            # TODO
-            pass
-
-        
-
-    # The heuristic function that decides if the move is "good" or "bad" for the snake,
-    # used by the minimax algorithm
-    def minimax_heuristic(self, board, game_state):
-        
-        return None
