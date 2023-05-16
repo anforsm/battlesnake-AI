@@ -110,6 +110,19 @@ class SnakeDuo():
             return self.snake2_move
     
     def calculate_move(self, snake):
+        # other stuff to check for
+        # - if our move makes it so that our teammate snake will die, dont do it
+        # - if our move makes it so that a nearby enemy snake will die, do it
+        # - at first, try to prioritize a move that will extend our snake's territory
+        # - if we are running out of food, ignore territory and just go for food
+        # - if we are in the end game, try to circle a territory,
+        #    while the other snake goes for a kill or trying to decrease enemy's territory
+        
+
+
+
+
+
         moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
         #moves_in_direction_of_food = snake.get_direction_of_food(self.board)
         completely_safe_immediate_moves = snake.get_safe_moves(self.board)
