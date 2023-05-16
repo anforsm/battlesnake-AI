@@ -6,17 +6,17 @@ class SnakeNetworkManager():
         self.snake = snake
     
     def on_info(self):
-        return self.snake.info()
+        return self.snake.on_info()
     
     def on_start(self, game_state):
-        self.snake.start(game_state)
+        self.snake.on_start(game_state)
         return "ok"
     
     def on_move(self, game_state):
-        return self.snake.move(game_state)
+        return self.snake.on_move(game_state)
     
     def on_end(self, game_state):
-        self.snake.end(game_state)
+        self.snake.on_end(game_state)
         return "ok"
 
 class Snake():
@@ -25,6 +25,8 @@ class Snake():
         self.is_enemy = True 
         self.is_dead = False
         self.body = []
+        self.head = None
+        self.tail = None
     
     def place_on_board(self, board):
         self.board = board
@@ -76,7 +78,7 @@ class Snake():
         self.tail = None
     
     def get_distance_to(self, x, y):
-        return abs(self.head["x"] - x) + abs(self.head["y"] - y)
+        return abs(self.head.x - x) + abs(self.head.y - y)
     
     def get_head_cell(self, board):
         return board.get_cell(self.head["x"], self.head["y"])
@@ -95,7 +97,8 @@ class Snake():
         new_history = move_history + [new_snake.board]
 
         alternate_histories = []
-        for move in new_snake.get_free_moves():
+        free_moves = new_snake.get_free_moves()
+        for move in free_moves:
             alternate_histories.append(new_snake.alternative_futures(move, new_history[:]))
 
         if len(alternate_histories) == 0:
@@ -106,8 +109,9 @@ class Snake():
     
     def get_free_moves(self):
         moves = []
-        for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
+        for move, offset in zip(["up", "down", "left", "right"], [(0, -1), (0, 1), (-1, 0), (1, 0)]):
             next_head_pos = (self.head.x + offset[0], self.head.y + offset[1])
+            #print(next_head_pos)
             next_head_cell = self.board.get_cell(next_head_pos[0], next_head_pos[1])
             if next_head_cell is not None and not next_head_cell.is_occupied():
                 moves.append(move)
@@ -124,8 +128,10 @@ class Snake():
     def __eq__(self, other):
         return self.client_id == other.client_id
     
-    def copy_to_board(self, board):
-        new_snake = Snake(self.client_id)
+    def copy_to_board(self, board, new_snake=None):
+        if new_snake is None:
+            new_snake = Snake(self.client_id)
+
         new_snake.is_enemy = self.is_enemy
         new_snake.is_dead = self.is_dead
         new_snake.health = self.health
@@ -137,23 +143,22 @@ class Snake():
         new_snake.color = self.color
         new_snake.place_on_board(board)
         return new_snake
-    
 
-
-
-
-class ControllableSnake(Snake):
+# A snake that is controlled by us
+# The snake should not be copied
+class ControllableSnake():
     def __init__(self, id, name):
-        super().__init__()
+        self.snake = None
         self.id = id
         self.name = name
         self.net = SnakeNetworkManager(self)
         self.is_enemy = False
+        self.client_id = None
 
     # info is called when you create your Battlesnake on play.battlesnake.com
     # and controls your Battlesnake's appearance
     # TIP: If you open your Battlesnake URL in a browser you should see this data
-    def info(self):
+    def on_info(self):
         return {
             "apiversion": "1",
             "author": "Anton Forsman & Nils Odin",
@@ -161,43 +166,45 @@ class ControllableSnake(Snake):
             "head": "default",
             "tail": "default",
         }
-      
+
     # start is called when your Battlesnake begins a game
-    def start(self, game_state):
+    def on_start(self, game_state):
         self.client_id = game_state["you"]["id"]
         print("[INFO] Initialized snake " + str(self.id))
         self.team.initialize_team(game_state)
         return
 
     # end is called when your Battlesnake finishes a game
-    def end(self, game_state):
+    def on_end(self, game_state):
         self.team.end_team(self, game_state)
         return
     
     # move is called on every turn and returns your next move
     # Valid moves are "up", "down", "left", or "right"
     # See https://docs.battlesnake.com/api/example-move for available data
-    def move(self, game_state):
+    def on_move(self, game_state):
+        print("[INFO] Calculating move")
         self.team.update_state(game_state)
-        self.team.calculate_move()
+        self.team.calculate_moves()
         move = self.team.get_move(self)
+        print(move)
         return {"move": move}
     
     def get_safe_moves(self, board):
-        if self.is_dead:
+        if self.snake.is_dead:
             return []
 
         safe_moves = []
         for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
-            next_head_pos = (self.head["x"] + offset[0], self.head["y"] + offset[1])
-            if board.is_safe(*next_head_pos):
+            next_head_pos = (self.snake.head.x + offset[0], self.snake.head.y + offset[1])
+            if board.b.is_safe(*next_head_pos):
                 adjacent_cells = [
                     (next_head_pos[0]+1, next_head_pos[1]),
                     (next_head_pos[0]-1, next_head_pos[1]), 
                     (next_head_pos[0], next_head_pos[1]+1), 
                     (next_head_pos[0], next_head_pos[1]-1)
                 ]
-                adjacent_cells = [board.get_cell(*cell) for cell in adjacent_cells]
+                adjacent_cells = [board.b.get_cell(*cell) for cell in adjacent_cells]
                 adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
 
                 adjacent_cell_has_enemy_snake = False
@@ -216,10 +223,10 @@ class ControllableSnake(Snake):
     def get_closest_food_pos(self, board):
         # go through every cell and find all food (perhaps this should be precalculated in board for faster )
         closest_food = {"distance":math.inf, "cell":None}
-        for row in board.cells:
+        for row in board.b.cells:
             for cell in row:
                 if cell.is_food():
-                    cell_distance = abs(self.head["x"] - cell.x) + abs(self.head["y"] - cell.y)
+                    cell_distance = abs(self.snake.head.x - cell.x) + abs(self.snake.head.y - cell.y)
                     if(cell_distance < closest_food["distance"]):
                         closest_food["cell"] = cell
                         closest_food["distance"] = cell_distance
@@ -230,4 +237,10 @@ class ControllableSnake(Snake):
         if closest_food is None:
             return None
         else:
-            return board.get_direction_between_cells(self.get_head_cell(board), closest_food)
+            return board.b.get_direction_between_cells(self.snake.head, closest_food)
+
+    def copy_to_board(self, board):
+        new_snake = ControllableSnake(self.id, self.name)
+        new_snake.net 
+        new_snake = super().copy_to_board(board, new_snake=new_snake)
+        return new_snake

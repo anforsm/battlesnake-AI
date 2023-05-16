@@ -37,7 +37,7 @@ class SnakeDuo():
 
     
     def snakes_initialized(self):
-        return self.snake1.client_id != None and self.snake2.client_id != None
+        return self.snake1.client_id is not None and self.snake2.client_id is not None
 
     def initialize_team(self, game_state):
         if not self.snakes_initialized():
@@ -45,22 +45,25 @@ class SnakeDuo():
 
         print("[INFO] Initialized snake team")
         
-        self.turn = game_state["turn"]
+        self.turn = -1
         self.board = Board(
             game_state["board"]["width"], 
             game_state["board"]["height"],
             our_snakes=self.snakes,
-            all_snakes=game_state["board"]["snakes"]
+            all_snakes_json=game_state["board"]["snakes"]
         )
 
-        self.board.update_state(game_state["board"])
-        self.board.save_replay = self.save_replay
-        self.append_board_history()
+        print(self.snake1.snake.client_id)
 
+        #self.board.update_state(game_state["board"])
+        self.board.save_replay = self.save_replay
+
+        #self.append_board_history()
+        self.update_state(game_state, force=True)
 
     
-    def update_state(self, game_state):
-        if game_state["turn"] > self.turn and self.snakes_initialized():
+    def update_state(self, game_state, force=False):
+        if force or (game_state["turn"] > self.turn and self.snakes_initialized()):
             json.dump(game_state, open("game_states/"+str(game_state["turn"])+".json", "w"))
 
             self.turn = game_state["turn"]
@@ -70,9 +73,10 @@ class SnakeDuo():
             for snake in self.snakes:
                 for snake_info in game_state["board"]["snakes"]:
                     if snake_info["id"] == snake.client_id:
-                        snake.update_state(snake_info)
+                        snake.snake.update_state(snake_info)
                         break
             
+            print("[INFO] Updated state for snake team")
             self.append_board_history()
     
     def set_snake_move(self, snake, move):
@@ -87,8 +91,42 @@ class SnakeDuo():
         elif snake == self.snake2:
             return self.snake2_move
     
+    def calculate_move(self, snake):
+        safe_moves = snake.get_safe_moves(self.board)
+
+        # if there are no safe moves, just go up
+        if len(safe_moves) == 0:
+            self.set_snake_move(snake, "up")
+            return
+
+        direction_of_food = snake.get_direction_of_food(self.board)
+
+        # if there is no food, just go in a random safe direction
+        if direction_of_food is None:
+            self.set_snake_move(snake, safe_moves[0])
+            return
+            
+        # if there is food, go in the direction of the food if it is safe
+        for direction in direction_of_food:
+            if direction in safe_moves:
+                self.set_snake_move(snake, direction)
+                break
+            
+        # if there is no safe direction towards the food, 
+        # just go in a random safe direction
+        if self.get_snake_move(snake) is None:
+            self.set_snake_move(snake, safe_moves[0])
+            return
+        
+        # if there is no safe direction
+        # just go in a random direction
+        if self.get_snake_move(snake) is None:
+            self.set_snake_move(snake, "up")
+            return
+
+    
     # This is where the move for each snake is calculated
-    def calculate_move(self):
+    def calculate_moves(self):
         if self.calculated_turn == self.turn:
             return
         self.calculated_turn = self.turn
@@ -98,36 +136,7 @@ class SnakeDuo():
             self.set_snake_move(snake, None)
 
         for snake in self.snakes:
-            safe_moves = snake.get_safe_moves(self.board)
-
-            # if there are no safe moves, just go up
-            if len(safe_moves) == 0:
-                self.set_snake_move(snake, "up")
-                continue
-
-            direction_of_food = snake.get_direction_of_food(self.board)
-
-            # if there is no food, just go in a random safe direction
-            if direction_of_food is None:
-                self.set_snake_move(snake, safe_moves[0])
-                continue
-                
-            # if there is food, go in the direction of the food if it is safe
-            for direction in direction_of_food:
-                if direction in safe_moves:
-                    self.set_snake_move(snake, direction)
-                    break
-            
-            # if there is no safe direction towards the food, 
-            # just go in a random safe direction
-            if self.get_snake_move(snake) is None:
-                self.set_snake_move(snake, safe_moves[0])
-
-        # if none of the snakes have a move, just go up
-        if self.get_snake_move(self.snake1) is None:
-            self.set_snake_move(self.snake1, "up")
-        if self.get_snake_move(self.snake2) is None:
-            self.set_snake_move(self.snake2, "up")
+            self.calculate_move(snake)
     
     # This is the command that is sent to the server
     def get_move(self, snake):
@@ -139,7 +148,7 @@ class SnakeDuo():
             return None
     
     def append_board_history(self):
-        self.board_history.append(self.board.copy())
+        self.board_history.append(self.board.b.copy())
     
     def on_end(self, game_state):
         game_id = game_state["game"]["id"]

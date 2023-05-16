@@ -5,42 +5,38 @@ import typing
 from flask import Flask
 from flask import request
 
+class A:
+    def __init__(self):
+        self.c = 5
+    
+    def set_c(self, c):
+        self.c = c
+    
+    def copy(self, new_obj=None):
+        if new_obj is None:
+            new_obj = A()
 
-def run_server(handlers: typing.Dict):
-    app = Flask("Battlesnake")
+        new_obj.set_c(self.c)
+        return new_obj 
 
-    @app.get("/")
-    def on_info():
-        return handlers["info"]()
+class B(A):
+    def __init__(self):
+        super().__init__()
+    
+    def copy(self):
+        new_b = B()
+        new_b = super().copy(new_b)
+        return new_b
 
-    @app.post("/start")
-    def on_start():
-        game_state = request.get_json()
-        handlers["start"](game_state)
-        return "ok"
 
-    @app.post("/move")
-    def on_move():
-        game_state = request.get_json()
-        return handlers["move"](game_state)
+b_1 = B()
+b_1.set_c(10)
+b_2 = b_1.copy()
+print(b_2.c)
+print(type(b_2))
 
-    @app.post("/end")
-    def on_end():
-        game_state = request.get_json()
-        handlers["end"](game_state)
-        return "ok"
-
-    @app.after_request
-    def identify_server(response):
-        response.headers.set(
-            "server", "battlesnake/github/starter-snake-python"
-        )
-        return response
-
-    host = "0.0.0.0"
-    port = int(os.environ.get("PORT", "8000"))
-
-    logging.getLogger("werkzeug").setLevel(logging.ERROR)
-
-    print(f"\nRunning Battlesnake at http://{host}:{port}")
-    app.run(host=host, port=port, debug=True)
+a_1 = A()
+a_1.set_c(10)
+a_2 = a_1.copy()
+print(a_2.c)
+print(type(a_2))
