@@ -76,7 +76,6 @@ class SnakeDuo():
                         snake.snake.update_state(snake_info)
                         break
             
-            print("[INFO] Updated state for snake team")
             self.append_board_history()
     
     def set_snake_move(self, snake, move):
@@ -98,6 +97,22 @@ class SnakeDuo():
         if len(safe_moves) == 0:
             self.set_snake_move(snake, "up")
             return
+        
+        new_safe_moves = []
+        best_moves = []
+        best_free_space = -1
+        for safe_move in safe_moves:
+            free_space = len(snake.snake.alternative_futures(safe_move))
+            if free_space >= best_free_space:
+                best_free_space = free_space
+                best_moves.append(safe_move)
+        print("[DEBUG] #Safe moves: " + str(len(safe_moves)) + ", #Best moves: " + str(len(best_moves)))
+        #print("[DEBUG] Best moves: " + str(best_moves))
+        print("[DEBUG] Safe moves: " + str(safe_moves) + ", Best moves: " + str(best_moves))
+        safe_moves = best_moves
+        
+
+
 
         direction_of_food = snake.get_direction_of_food(self.board)
 

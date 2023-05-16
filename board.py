@@ -212,7 +212,6 @@ class GeneralBoard:
         return new_board
     
     def convert_to_image(self, cell_size=25):
-        cell_size = 25
         img = Image.new('RGB', (self.width*cell_size, self.height*cell_size), color = 'white')
         draw = ImageDraw.Draw(img)
 

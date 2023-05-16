@@ -68,8 +68,9 @@ class Snake():
 
     
     def kill(self):
-        for cell in self.body:
-            cell.clear_snake_info()
+        if self.body is not None:
+            for cell in self.body:
+                cell.clear_snake_info()
         self.is_dead = True
         self.length = 0
         self.health = 0
@@ -85,11 +86,12 @@ class Snake():
     
     # returns how many moves the snake can make before it dies
     def alternative_futures(self, direction, move_history = None):
+        max_depth = 10
         if move_history is None:
             move_history = []
 
         depth = len(move_history)
-        if depth > 10:
+        if depth > max_depth:
             return move_history
         new_snake = self.simulate_move(direction)
         if new_snake.is_dead:
@@ -99,7 +101,10 @@ class Snake():
         alternate_histories = []
         free_moves = new_snake.get_free_moves()
         for move in free_moves:
-            alternate_histories.append(new_snake.alternative_futures(move, new_history[:]))
+            alternate_history = new_snake.alternative_futures(move, new_history[:])
+            if len(alternate_history) > max_depth:
+                return alternate_history
+            alternate_histories.append(alternate_history)
 
         if len(alternate_histories) == 0:
             return alternate_histories 
@@ -183,11 +188,9 @@ class ControllableSnake():
     # Valid moves are "up", "down", "left", or "right"
     # See https://docs.battlesnake.com/api/example-move for available data
     def on_move(self, game_state):
-        print("[INFO] Calculating move")
         self.team.update_state(game_state)
         self.team.calculate_moves()
         move = self.team.get_move(self)
-        print(move)
         return {"move": move}
     
     def get_safe_moves(self, board):
@@ -198,24 +201,24 @@ class ControllableSnake():
         for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
             next_head_pos = (self.snake.head.x + offset[0], self.snake.head.y + offset[1])
             if board.b.is_safe(*next_head_pos):
-                adjacent_cells = [
-                    (next_head_pos[0]+1, next_head_pos[1]),
-                    (next_head_pos[0]-1, next_head_pos[1]), 
-                    (next_head_pos[0], next_head_pos[1]+1), 
-                    (next_head_pos[0], next_head_pos[1]-1)
-                ]
-                adjacent_cells = [board.b.get_cell(*cell) for cell in adjacent_cells]
-                adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
+                #adjacent_cells = [
+                #    (next_head_pos[0]+1, next_head_pos[1]),
+                #    (next_head_pos[0]-1, next_head_pos[1]), 
+                #    (next_head_pos[0], next_head_pos[1]+1), 
+                #    (next_head_pos[0], next_head_pos[1]-1)
+                #]
+                #adjacent_cells = [board.b.get_cell(*cell) for cell in adjacent_cells]
+                #adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
 
-                adjacent_cell_has_enemy_snake = False
-                # check any of the adjacent cells for other snakes
-                for cell in adjacent_cells:
-                    if cell.is_snake_head and cell.snake != self:
-                        adjacent_cell_has_enemy_snake = True
-                        break
+                #adjacent_cell_has_enemy_snake = False
+                ## check any of the adjacent cells for other snakes
+                #for cell in adjacent_cells:
+                #    if cell.is_snake_head and cell.snake != self:
+                #        adjacent_cell_has_enemy_snake = True
+                #        break
 
-                if not adjacent_cell_has_enemy_snake:
-                    safe_moves.append(move)
+                #if not adjacent_cell_has_enemy_snake:
+                safe_moves.append(move)
 
         return safe_moves
     
