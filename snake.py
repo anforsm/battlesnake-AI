@@ -46,9 +46,11 @@ class Snake():
         self.board.place_snake(self)
     
     def move(self, direction):
+        if self.is_dead:
+            return
         coordinate_offset = {
-            "up": (0, -1),
-            "down": (0, 1),
+            "up": (0, 1),
+            "down": (0, -1),
             "left": (-1, 0),
             "right": (1, 0)
         }[direction]
@@ -84,9 +86,17 @@ class Snake():
     def get_head_cell(self, board):
         return board.get_cell(self.head["x"], self.head["y"])
     
+    def get_moves_without_future_death(self, prediction_depth=10):
+        moves_without_death = []
+        for move in ["up", "down", "left", "right"]:
+            if len(self.alternative_futures(move, max_depth=prediction_depth)) >= prediction_depth:
+                moves_without_death.append(move)
+        return moves_without_death
+
+
+    
     # returns how many moves the snake can make before it dies
-    def alternative_futures(self, direction, move_history = None):
-        max_depth = 10
+    def alternative_futures(self, direction, move_history = None, max_depth=10):
         if move_history is None:
             move_history = []
 
@@ -107,14 +117,14 @@ class Snake():
             alternate_histories.append(alternate_history)
 
         if len(alternate_histories) == 0:
-            return alternate_histories 
+            return move_history + [new_snake.board]
 
         best_history = max(alternate_histories, key=lambda x: len(x))
         return best_history
     
     def get_free_moves(self):
         moves = []
-        for move, offset in zip(["up", "down", "left", "right"], [(0, -1), (0, 1), (-1, 0), (1, 0)]):
+        for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
             next_head_pos = (self.head.x + offset[0], self.head.y + offset[1])
             #print(next_head_pos)
             next_head_cell = self.board.get_cell(next_head_pos[0], next_head_pos[1])
@@ -201,24 +211,24 @@ class ControllableSnake():
         for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
             next_head_pos = (self.snake.head.x + offset[0], self.snake.head.y + offset[1])
             if board.b.is_safe(*next_head_pos):
-                #adjacent_cells = [
-                #    (next_head_pos[0]+1, next_head_pos[1]),
-                #    (next_head_pos[0]-1, next_head_pos[1]), 
-                #    (next_head_pos[0], next_head_pos[1]+1), 
-                #    (next_head_pos[0], next_head_pos[1]-1)
-                #]
-                #adjacent_cells = [board.b.get_cell(*cell) for cell in adjacent_cells]
-                #adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
+                adjacent_cells = [
+                    (next_head_pos[0]+1, next_head_pos[1]),
+                    (next_head_pos[0]-1, next_head_pos[1]), 
+                    (next_head_pos[0], next_head_pos[1]+1), 
+                    (next_head_pos[0], next_head_pos[1]-1)
+                ]
+                adjacent_cells = [board.b.get_cell(*cell) for cell in adjacent_cells]
+                adjacent_cells = [cell for cell in adjacent_cells if cell is not None]
 
-                #adjacent_cell_has_enemy_snake = False
-                ## check any of the adjacent cells for other snakes
-                #for cell in adjacent_cells:
-                #    if cell.is_snake_head and cell.snake != self:
-                #        adjacent_cell_has_enemy_snake = True
-                #        break
+                adjacent_cell_has_enemy_snake = False
+                # check any of the adjacent cells for other snakes
+                for cell in adjacent_cells:
+                    if cell.is_snake_head and cell.snake != self:
+                        adjacent_cell_has_enemy_snake = True
+                        break
 
-                #if not adjacent_cell_has_enemy_snake:
-                safe_moves.append(move)
+                if not adjacent_cell_has_enemy_snake:
+                    safe_moves.append(move)
 
         return safe_moves
     
@@ -226,6 +236,8 @@ class ControllableSnake():
     def get_closest_food_pos(self, board):
         # go through every cell and find all food (perhaps this should be precalculated in board for faster )
         closest_food = {"distance":math.inf, "cell":None}
+        if self.snake.is_dead:
+            return closest_food
         for row in board.b.cells:
             for cell in row:
                 if cell.is_food():

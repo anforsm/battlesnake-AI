@@ -127,7 +127,7 @@ class NetworkManager(metaclass=SingletonMeta):
         def ping():
             return "pong"
 
-        self.app.run(host=host, port=port, debug=True)
+        self.app.run(host=host, port=port, debug=True, threaded=False)
 
 network = NetworkManager()
 

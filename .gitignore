@@ -132,3 +132,5 @@ board/
 board.gif
 game_states/
 replays/
+
+move_logs/

@@ -15,6 +15,7 @@ class Cell:
         self.color = None
         self.closest_snakes = None
         self.closest_snake_distance = None
+        self.future = []
     
     def set_food(self, food):
         self.food = food 
@@ -45,6 +46,9 @@ class Cell:
     def is_occupied(self):
         return self.snake is not None
     
+    def set_future(self, snake):
+        self.future.append(snake.client_id)
+    
     def clear_snake_info(self):
         self.set_snake(None)
         self.is_snake_head = False
@@ -57,6 +61,7 @@ class Cell:
         self.set_snake(None)
         self.set_color(None)
         self.set_closest_snakes(None, None)
+        self.future = []
         return self
     
     def copy(self):
@@ -67,6 +72,7 @@ class Cell:
         new_cell.color = self.color
         new_cell.closest_snakes = self.closest_snakes
         new_cell.closest_snake_distance = self.closest_snake_distance
+        new_cell.future = self.future
         return new_cell
     
     def __repr__(self):
@@ -92,6 +98,19 @@ class GeneralBoard:
         if not self.is_valid_cell(x, y):
             return False
         return self.cells[x][y].is_safe()
+    
+    @staticmethod
+    def get_direction_between_coords(x1, y1, x2, y2):
+        directions = []
+        if x1 < x2:
+            directions.append("right")
+        elif x1 > x2:
+            directions.append("left")
+        if y1 < y2:
+            directions.append("up")
+        elif y1 > y2:
+            directions.append("down")
+        return directions
 
     def get_direction_between_cells(self, cell1, cell2):
         directions = []
@@ -204,11 +223,16 @@ class GeneralBoard:
             new_board = GeneralBoard(self.width, self.height)
 
         new_board.cells = [[cell.copy().clear_snake_info() for cell in row] for row in self.cells]
-        new_board.all_cells = [cell.copy().clear_snake_info() for cell in self.all_cells]
+        new_board.all_cells = []
+        for row in new_board.cells:
+            for cell in row:
+                new_board.all_cells.append(cell)
+
         new_board.snakes = []
         new_board.snake_map = {}
         for snake in self.snakes:
             snake.copy_to_board(new_board)
+
         return new_board
     
     def convert_to_image(self, cell_size=25):
@@ -274,6 +298,13 @@ class GeneralBoard:
                         draw.rectangle((x*cell_size+0.1*cell_size, y*cell_size+0.1*cell_size, x*cell_size+0.9*cell_size, y*cell_size+0.9*cell_size), fill=color, outline=color)
                     else:
                         draw.rectangle((x*cell_size+0.2*cell_size, y*cell_size+0.2*cell_size, x*cell_size+0.8*cell_size, y*cell_size+0.8*cell_size), fill=color, outline=color)
+        
+        # draw smaller black dots in the center of a cell
+        # if it is calculated to be a snakes future
+        for x in range(self.width):
+            for y in range(self.height):
+                if len(self.cells[x][y].future) > 0:
+                    draw.ellipse((x*cell_size+0.4*cell_size, y*cell_size+0.4*cell_size, x*cell_size+0.6*cell_size, y*cell_size+0.6*cell_size), fill='black', outline='black')
 
         return img
 
