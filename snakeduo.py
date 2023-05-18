@@ -110,6 +110,12 @@ class SnakeDuo():
             return self.snake2_move
     
     def calculate_move(self, snake):
+        # main move order
+        # go such that we do not have a chance of dying
+        # go such that we have a chance of dying
+        # go such that we will die, but in the most amount of turns
+        # go such that we die
+
         # other stuff to check for
         # - if our move makes it so that our teammate snake will die, dont do it
         # - if our move makes it so that a nearby enemy snake will die, do it
