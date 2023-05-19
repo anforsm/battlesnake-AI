@@ -36,7 +36,7 @@ class NetworkManager(metaclass=SingletonMeta):
             return
 
         if team_id == 1:
-            team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=False)
+            team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
         elif team_id == 2:
             team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
 
@@ -127,7 +127,7 @@ class NetworkManager(metaclass=SingletonMeta):
         def ping():
             return "pong"
 
-        self.app.run(host=host, port=port, debug=True)
+        self.app.run(host=host, port=port, debug=True, threaded=False)
 
 network = NetworkManager()
 
