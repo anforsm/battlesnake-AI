@@ -92,6 +92,31 @@ class Snake():
             if len(self.alternative_futures(move, max_depth=prediction_depth)) >= prediction_depth:
                 moves_without_death.append(move)
         return moves_without_death
+    
+    def get_other_snakes(self):
+        return [snake for snake in self.board.snakes if snake.client_id != self.client_id]
+    
+    def other_snake_will_die_because_of_move(self, move):
+        depth = 10
+        snakes_that_die_either_way = []
+        for snake in self.get_other_snakes():
+            if len(snake.get_moves_without_future_death(prediction_depth=depth)) == 0:
+                snakes_that_die_either_way.append(snake)
+
+        snakes_that_will_die_after_my_move = []
+        moved_snake = self.simulate_move(move)
+        for snake in moved_snake.get_other_snakes():
+            if len(snake.get_moves_without_future_death(prediction_depth=depth)) == 0:
+                snakes_that_will_die_after_my_move.append(snake)
+        
+        snakes_that_die_because_of_my_move = []
+        for snake in snakes_that_will_die_after_my_move:
+            if snake not in snakes_that_die_either_way:
+                snakes_that_die_because_of_my_move.append(snake)
+        
+        return snakes_that_die_because_of_my_move
+    
+
 
 
     
@@ -101,7 +126,7 @@ class Snake():
             move_history = []
 
         depth = len(move_history)
-        if depth > max_depth:
+        if depth >= max_depth:
             return move_history
         new_snake = self.simulate_move(direction)
         if new_snake.is_dead:
@@ -112,7 +137,7 @@ class Snake():
         free_moves = new_snake.get_free_moves()
         for move in free_moves:
             alternate_history = new_snake.alternative_futures(move, new_history[:])
-            if len(alternate_history) > max_depth:
+            if len(alternate_history) >= max_depth:
                 return alternate_history
             alternate_histories.append(alternate_history)
 

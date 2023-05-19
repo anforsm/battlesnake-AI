@@ -92,10 +92,10 @@ class SnakeDuo():
             }
             self.move_logs.append(move_log)
 
-            predicted_safe_future = snake.snake.alternative_futures(move)
-            for future_state in predicted_safe_future:
-                future_snake = future_state.get_snake(snake.client_id)
-                snake.snake.board.get_cell(future_snake.head.x, future_snake.head.y).set_future(snake)
+            #predicted_safe_future = snake.snake.alternative_futures(move)
+            #for future_state in predicted_safe_future:
+            #    future_snake = future_state.get_snake(snake.client_id)
+            #    snake.snake.board.get_cell(future_snake.head.x, future_snake.head.y).set_future(snake)
 
 
         if snake == self.snake1:
@@ -109,12 +109,31 @@ class SnakeDuo():
         elif snake == self.snake2:
             return self.snake2_move
     
+    def get_other_snake(self, snake):
+        if snake == self.snake1:
+            return self.snake2
+        elif snake == self.snake2:
+            return self.snake1
+    
     def calculate_move(self, snake):
         if snake.snake.is_dead:
             return None
 
         self.set_snake_move(snake, "up", reason="default")
-        first_snake = snake.snake.head
+
+
+        other_snake = self.get_other_snake(snake)
+        moves_that_kill_teammate = []
+        moves_that_kill_enemy = []
+        for move in ["up", "down", "left", "right"]:
+            future_dead_snakes = snake.snake.other_snake_will_die_because_of_move(move)
+            for dead_snake in future_dead_snakes:
+                if dead_snake.client_id == other_snake.client_id:
+                    moves_that_kill_teammate.append(move)
+                else:
+                    moves_that_kill_enemy.append(move)
+        
+
 
         moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
         moves_in_direction_of_food = snake.get_direction_of_food(self.board)
@@ -136,7 +155,9 @@ class SnakeDuo():
             "moves_in_direction_of_food": moves_in_direction_of_food,
             "completely_safe_immediate_moves": completely_safe_immediate_moves,
             "could_be_safe_immediate_moves": could_be_safe_immediate_moves,
-            "moves_with_death_counter": moves_with_death_counter
+            "moves_with_death_counter": moves_with_death_counter,
+            "moves_that_kill_teammate": moves_that_kill_teammate,
+            "moves_that_kill_enemy": moves_that_kill_enemy
         }
 
         # main move order
@@ -148,6 +169,7 @@ class SnakeDuo():
         # other stuff to check for
         # - if our move makes it so that our teammate snake will die, dont do it
         # - if our move makes it so that a nearby enemy snake will die, do it
+        # - TAKE INTO ACCOUNT OTHER SNAKES MOVE
         # - at first, try to prioritize a move that will extend our snake's territory
         # - if we are running out of food, ignore territory and just go for food
         # - if we are in the end game, try to circle a territory,
@@ -163,18 +185,36 @@ class SnakeDuo():
         heuristic = [
             ("no-immediate-death", [
                 ("no-future-death", [
+                    ("save-teammate", [
+                        ("kill-enemy", [
+                            ("towards-food", [])
+                        ]),
+                        ("towards-food", [])
+                    ]),
+                    ("kill-enemy", [
+                        ("towards-food", [])
+                    ]),
                     ("towards-food", [])
                 ]),
                 ("least-future-death", [
-                    ("away-from-food", [])
+                    ("save-teammate", [
+                        ("kill-enemy", [])
+                    ]),
+                    ("kill-enemy", []),
+                    ("away-from-food", []),
                 ]),
             ]),
             ("chance-of-immediate-death", [
                 ("no-future-death", [
-                    ("towards-food", [])
+                    ("save-teammate", [
+                        ("kill-enemy", []),
+                    ]),
                 ]),
                 ("least-future-death", [
-                    ("away-from-food", [])
+                    ("save-teammate", [
+                        ("kill-enemy", [])
+                    ]),
+                    ("away-from-food", []),
                 ]),
             ]),
         ]
@@ -215,6 +255,10 @@ class SnakeDuo():
                     allowed_moves = [move for move in allowed_moves if move in moves_in_direction_of_food]
                 elif heuristic_name == "away-from-food":
                     allowed_moves = [move for move in allowed_moves if move not in moves_in_direction_of_food]
+                elif heuristic_name == "save-teammate":
+                    allowed_moves = [move for move in allowed_moves if move not in moves_that_kill_teammate]
+                elif heuristic_name == "kill-enemy":
+                    allowed_moves = [move for move in allowed_moves if move in moves_that_kill_enemy]
                 else:
                     raise Exception("Unknown heuristic name: {}".format(heuristic_name))
                 
