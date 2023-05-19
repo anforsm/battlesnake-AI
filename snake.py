@@ -126,7 +126,6 @@ class Snake():
         moves = []
         for move, offset in zip(["up", "down", "left", "right"], [(0, 1), (0, -1), (-1, 0), (1, 0)]):
             next_head_pos = (self.head.x + offset[0], self.head.y + offset[1])
-            #print(next_head_pos)
             next_head_cell = self.board.get_cell(next_head_pos[0], next_head_pos[1])
             if next_head_cell is not None and not next_head_cell.is_occupied():
                 moves.append(move)

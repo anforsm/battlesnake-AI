@@ -367,10 +367,15 @@ class Board():
         snake_id = snake_state["id"]
         snake = self.b.snake_map[snake_id]
 
+        never_set_head = True
         for body_part in snake_state["body"]:
 
             is_head = body_part == snake_state["head"]
+            if is_head and never_set_head:
+                never_set_head = False
             self.b.cells[body_part["x"]][body_part["y"]].set_snake(snake, is_head)
+        if never_set_head:
+            print("ERROR: snake head not found")
 
     
     def update_state(self, board_state):

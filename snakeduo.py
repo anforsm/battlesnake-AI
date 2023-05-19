@@ -1,10 +1,13 @@
 from board import Board, GeneralBoard as GBoard
 from snake import Snake
 import math
+from collections import defaultdict
+import random
 import json
 from tqdm import trange
 import os
 from datetime import datetime
+from copy import copy
 
 class SnakeDuo():
     def __init__(self, name, color, snake1, snake2, save_replay=False):
@@ -55,12 +58,8 @@ class SnakeDuo():
             all_snakes_json=game_state["board"]["snakes"]
         )
 
-        print(self.snake1.snake.client_id)
-
-        #self.board.update_state(game_state["board"])
         self.board.save_replay = self.save_replay
 
-        #self.append_board_history()
         self.update_state(game_state, force=True)
 
     
@@ -72,6 +71,7 @@ class SnakeDuo():
             json.dump(game_state, open(path + "/" + str(game_state["turn"])+".json", "w"))
 
             self.turn = game_state["turn"]
+            #print("--------------Turn start" + str(self.turn) + "--------------")
 
             self.board.update_state(game_state["board"])
 
@@ -110,6 +110,35 @@ class SnakeDuo():
             return self.snake2_move
     
     def calculate_move(self, snake):
+        if snake.snake.is_dead:
+            return None
+
+        self.set_snake_move(snake, "up", reason="default")
+        first_snake = snake.snake.head
+
+        moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
+        moves_in_direction_of_food = snake.get_direction_of_food(self.board)
+        completely_safe_immediate_moves = snake.get_safe_moves(self.board)
+
+
+
+        could_be_safe_immediate_moves = snake.snake.get_free_moves()
+
+        #moves_in_direction_of_food = []
+        #could_be_safe_immediate_moves = []
+
+        moves_with_death_counter = []
+        for move in ["up", "down", "left", "right"]:
+            moves_with_death_counter.append((move, len(snake.snake.alternative_futures(move))))
+
+        info = {
+            "moves_without_certain_future_death": moves_without_certain_future_death,
+            "moves_in_direction_of_food": moves_in_direction_of_food,
+            "completely_safe_immediate_moves": completely_safe_immediate_moves,
+            "could_be_safe_immediate_moves": could_be_safe_immediate_moves,
+            "moves_with_death_counter": moves_with_death_counter
+        }
+
         # main move order
         # go such that we do not have a chance of dying
         # go such that we have a chance of dying
@@ -123,25 +152,102 @@ class SnakeDuo():
         # - if we are running out of food, ignore territory and just go for food
         # - if we are in the end game, try to circle a territory,
         #    while the other snake goes for a kill or trying to decrease enemy's territory
-        
+
+
+        # heuristic is a recursive list of tuples
+        # the first element of the tuple is the name of the heuristic
+        # the second element is the heuristic to be used if the first element is true
+        # if a herustic is empty, we are done and can return a random move that follows the heuristic
+        # the heuristic should be applied in order of the list
+        # if the heuristic is exhausted, we are also done and can return a random move that follows the heuristic
+        heuristic = [
+            ("no-immediate-death", [
+                ("no-future-death", [
+                    ("towards-food", [])
+                ]),
+                ("least-future-death", [
+                    ("away-from-food", [])
+                ]),
+            ]),
+            ("chance-of-immediate-death", [
+                ("no-future-death", [
+                    ("towards-food", [])
+                ]),
+                ("least-future-death", [
+                    ("away-from-food", [])
+                ]),
+            ]),
+        ]
+
+        #print("Turn " + str(self.turn) + " - " + snake.name)
+
+        def find_move(heuristic, allowed_moves, heuristic_history=None):
+            if heuristic_history is None:
+                heuristic_history = []
+
+
+            pre_allowed_moves = copy(allowed_moves)
+            for heuristic_name, next_heuristic in heuristic:
+                allowed_moves = copy(pre_allowed_moves)
+                #print("Checking heuristic: " + heuristic_name)
+                if heuristic_name == "no-immediate-death":
+                    allowed_moves = [move for move in allowed_moves if move in completely_safe_immediate_moves]
+                elif heuristic_name == "chance-of-immediate-death":
+                    allowed_moves = [move for move in allowed_moves if move in could_be_safe_immediate_moves]
+                    #print("Checked could be safe moves", str(could_be_safe_immediate_moves), str(allowed_moves))
+                elif heuristic_name == "no-future-death":
+                    allowed_moves = [move for move in allowed_moves if move in moves_without_certain_future_death]
+                elif heuristic_name == "least-future-death":
+                    move_death_timer_dict = defaultdict(lambda: 0)
+                    for move, death_timer in moves_with_death_counter:
+                        move_death_timer_dict[move] = death_timer
+
+                    death_timer_for_allowed_moves = [(move, move_death_timer_dict[move]) for move in allowed_moves]
+                    if len(death_timer_for_allowed_moves) > 0:
+                        best_death_timer = max(death_timer_for_allowed_moves, key=lambda x: x[1])[1]
+
+                        if best_death_timer > 0:
+                            allowed_moves = [move for move, death_timer in death_timer_for_allowed_moves if death_timer == best_death_timer]
+                        else:
+                            allowed_moves = []
+
+                elif heuristic_name == "towards-food":
+                    allowed_moves = [move for move in allowed_moves if move in moves_in_direction_of_food]
+                elif heuristic_name == "away-from-food":
+                    allowed_moves = [move for move in allowed_moves if move not in moves_in_direction_of_food]
+                else:
+                    raise Exception("Unknown heuristic name: {}".format(heuristic_name))
+                
+                if len(allowed_moves) == 0:
+                    continue
+                
+                next_heuristic_history = heuristic_history + [heuristic_name]
+                if len(next_heuristic) == 0:
+                    self.set_snake_move(snake, random.choice(allowed_moves), reason={
+                            "heuristics used": str(next_heuristic_history),
+                            "info": info
+                        })
+                    return True
+                
+                find_move(next_heuristic, allowed_moves, next_heuristic_history)
+                return True
+
+            
+            self.set_snake_move(snake, random.choice(pre_allowed_moves), reason={
+                "heuristic used": str(heuristic_history),
+                "info": info
+                })
+            return True 
+
+        find_move(heuristic, ["up", "down", "left", "right"])
+
+        return
 
 
 
 
 
-        moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
-        #moves_in_direction_of_food = snake.get_direction_of_food(self.board)
-        completely_safe_immediate_moves = snake.get_safe_moves(self.board)
-        #could_be_safe_immediate_moves = snake.snake.get_free_moves()
-        completely_safe_future_moves = []
-        for move in ["up", "down", "left", "right"]:
-            if move in completely_safe_immediate_moves and move in moves_without_certain_future_death:
-                completely_safe_future_moves.append(move)
 
-
-        moves_in_direction_of_food = []
-        completely_safe_immediate_moves = []
-        could_be_safe_immediate_moves = []
 
         if len(completely_safe_future_moves) > 0:
 
@@ -294,6 +400,12 @@ class SnakeDuo():
     def on_end(self, game_state):
         game_id = game_state["game"]["id"]
         if self.save_replay:
+
+            path = "./move_logs/"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S")+" (" + game_id[:3] + ")"
+            os.makedirs(path, exist_ok=True)
+            json.dump(self.move_logs, open(path + "/move_logs.json", "w"), indent=4)
+
+
             # create folder for game
             path = "./replays/"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S")+" (" + game_id[:3] + ")"
             os.makedirs(path, exist_ok=True)
@@ -305,9 +417,6 @@ class SnakeDuo():
             self.board_history[-1].create_gif(path)
 
 
-            path = "./move_logs/"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S")+" (" + game_id[:3] + ")"
-            os.makedirs(path, exist_ok=True)
-            json.dump(self.move_logs, open(path + "/move_logs.json", "w"), indent=4)
         
         self.game_ended = True
         
