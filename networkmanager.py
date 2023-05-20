@@ -4,6 +4,8 @@ import os
 import logging
 from snakeduo import SnakeDuo
 from snake import Snake, ControllableSnake as CSnake
+import threading
+from multiprocessing import Process, Lock, Manager
 
 our_color = "#ff4e03"
 
@@ -22,6 +24,8 @@ class NetworkManager(metaclass=SingletonMeta):
         self.snakes = []
         self.games = {}
         self.snake_ids = [1, 2, 3, 4]
+        self.thread_local_storage = threading.local()
+        self.game_locks = {}
     
     def create_game(self, game_id):
         if game_id not in self.games:
@@ -44,6 +48,8 @@ class NetworkManager(metaclass=SingletonMeta):
         self.games[game_id]["snakes"][team.snake1.id] = team.snake1
         self.games[game_id]["snakes"][team.snake2.id] = team.snake2
 
+        return self.games[game_id]
+
     
     def get_snake(self, game_id, snake_id):
         return self.games[game_id]["snakes"][snake_id]
@@ -53,6 +59,7 @@ class NetworkManager(metaclass=SingletonMeta):
         for snake in self.snakes:
             self.snake_map[str(snake.id)] = snake
         return self
+
     
     def create_endpoints(self):
 
@@ -75,34 +82,68 @@ class NetworkManager(metaclass=SingletonMeta):
         def on_start(snake_id):
             request_json = request.get_json()
             game_id = request_json["game"]["id"]
-            team_id = 1 if snake_id == "1" or snake_id == "2" else 2 
-            self.create_game(game_id)
-            self.create_team(game_id, team_id)
 
-            return self.get_snake(game_id, snake_id).net.on_start(request_json)
+            if not hasattr(self.thread_local_storage, game_id):
+                setattr(self.thread_local_storage, game_id, {})
+            
+            lock = self.game_locks.setdefault(game_id, threading.Lock())
+            with lock:
+                team_id = 1 if snake_id == "1" or snake_id == "2" else 2 
+
+                state = getattr(self.thread_local_storage, game_id)
+                if not "game" in state:
+                    state["game"] = {
+                        "snakes": {},
+                        "teams": {}
+                    }
+
+                if not team_id in state["game"]["teams"]:
+                    if team_id == 1:
+                        team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
+                    elif team_id == 2:
+                        team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
+
+                    state["game"]["teams"][team_id] = team
+                    state["game"]["snakes"][team.snake1.id] = team.snake1
+                    state["game"]["snakes"][team.snake2.id] = team.snake2
+
+
+                return state["game"]["snakes"][snake_id].net.on_start(request_json)
+                #return self.get_snake(game_id, snake_id).net.on_start(request_json)
         
         @self.app.post("/<snake_id>/move/")
         def on_move(snake_id):
             request_json = request.get_json()
             game_id = request_json["game"]["id"]
-            return self.get_snake(game_id, snake_id).net.on_move(request_json)
+            lock = self.game_locks.setdefault(game_id, threading.Lock())
+            with lock:
+                return getattr(self.thread_local_storage, game_id)["game"]["snakes"][snake_id].net.on_move(request_json)
+            #return self.get_snake(game_id, snake_id).net.on_move(request_json)
         
         @self.app.post("/<snake_id>/end/")
         def on_end(snake_id):
             request_json = request.get_json()
             game_id = request_json["game"]["id"]
-            game_end_res = self.get_snake(game_id, snake_id).net.on_end(request_json)
-            teams = self.games[game_id]["teams"].values()
-            all_teams_ended = True
-            for team in teams:
-                if not team.game_ended:
-                    all_teams_ended = False
-                    break
+            lock = self.game_locks.setdefault(game_id, threading.Lock())
+            with lock:
+                state = getattr(self.thread_local_storage, game_id)
+                game_end_res = state["game"]["snakes"][snake_id].net.on_end(request_json)
+                teams = state["game"]["teams"].values()
 
-            if all_teams_ended:
-                print(f"[INFO] Deleted game {game_id[:3]} from database")
-                self.delete_game(game_id)
-            return game_end_res
+                #game_end_res = self.get_snake(game_id, snake_id).net.on_end(request_json)
+                #teams = self.games[game_id]["teams"].values()
+                all_teams_ended = True
+                for team in teams:
+                    if not team.game_ended:
+                        all_teams_ended = False
+                        break
+
+                if all_teams_ended:
+                    print(f"[INFO] Deleted game {game_id[:3]} from database")
+                    delattr(self.thread_local_storage, game_id)
+                    del self.game_locks[game_id]
+                    #self.delete_game(game_id)
+                return game_end_res
 
             
         @self.app.after_request
