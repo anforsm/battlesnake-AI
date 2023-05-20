@@ -8,6 +8,8 @@ from tqdm import trange
 import os
 from datetime import datetime
 from copy import copy
+import numpy as np
+import time
 
 class SnakeDuo():
     def __init__(self, name, color, snake1, snake2, save_replay=False):
@@ -48,7 +50,6 @@ class SnakeDuo():
         if not self.snakes_initialized():
             return
 
-        print("[INFO] Initialized snake team")
         
         self.turn = -1
         self.board = Board(
@@ -65,6 +66,9 @@ class SnakeDuo():
     
     def update_state(self, game_state, force=False):
         if force or (game_state["turn"] > self.turn and self.snakes_initialized()):
+            # print snake latency
+            # print("Snake 1 latency: " + str(game_state["board"]["snakes"][0]["latency"]))
+            # print("Snake 2 latency: " + str(game_state["board"]["snakes"][1]["latency"]))
             game_id = game_state["game"]["id"]
             path = "./game_states/"+datetime.now().strftime("%Y-%m-%d_%H")+" (" + game_id[:3] + ")"
             os.makedirs(path, exist_ok=True)
@@ -78,8 +82,10 @@ class SnakeDuo():
             for snake in self.snakes:
                 for snake_info in game_state["board"]["snakes"]:
                     if snake_info["id"] == snake.client_id:
+                        snake.made_move = False
                         snake.snake.update_state(snake_info)
                         break
+            
             
     
     def set_snake_move(self, snake, move, reason=None):
@@ -125,30 +131,71 @@ class SnakeDuo():
         other_snake = self.get_other_snake(snake)
         moves_that_kill_teammate = []
         moves_that_kill_enemy = []
+        t1_other_snake_die = time.time()
+        #print("[INFO] This snake is " + str(snake.client_id))
         for move in ["up", "down", "left", "right"]:
+            #print("[INFO] Checking move " + move)
             future_dead_snakes = snake.snake.other_snake_will_die_because_of_move(move)
             for dead_snake in future_dead_snakes:
-                if dead_snake.client_id == other_snake.client_id:
+                if dead_snake == other_snake.client_id:
                     moves_that_kill_teammate.append(move)
                 else:
                     moves_that_kill_enemy.append(move)
+        t2_other_snake_die = time.time()
         
 
 
+        t1_future_move = time.time()
         moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
-        moves_in_direction_of_food = snake.get_direction_of_food(self.board)
+        t2_future_move = time.time()
+
+        t1_move_food = time.time()
+        moves_in_direction_of_food, distance_to_closest_food = snake.get_direction_of_food(self.board)
+        t2_move_food = time.time()
+
+        t1_safe_move = time.time()
         completely_safe_immediate_moves = snake.get_safe_moves(self.board)
+        t2_safe_move = time.time()
 
 
 
+        t1_safish_move = time.time()
         could_be_safe_immediate_moves = snake.snake.get_free_moves()
+        t2_safish_move = time.time()
 
         #moves_in_direction_of_food = []
         #could_be_safe_immediate_moves = []
 
+        t1_death_timer = time.time()
         moves_with_death_counter = []
+        moves_with_death_counter_map = {}
         for move in ["up", "down", "left", "right"]:
-            moves_with_death_counter.append((move, len(snake.snake.alternative_futures(move))))
+            death_timer = len(snake.snake.alternative_futures(move))
+            moves_with_death_counter.append((move, death_timer))
+            moves_with_death_counter_map[move] = death_timer
+        t2_death_timer = time.time()
+        
+        t1_territory_increase = time.time()
+        distance_to_closest_food_map = {}
+        territory_size_increases = {}
+        for move in ["up", "down", "left", "right"]:
+            territory_size_increases[move] = snake.get_potential_territory_increase(move)
+            distance_to_closest_food_map[move] = distance_to_closest_food + 1 * (
+                1 if move in moves_in_direction_of_food else -1
+            )
+        t2_territory_increase = time.time()
+
+
+        state_information = {
+        }
+
+        for move in ["up", "down", "left", "right"]:
+            state_information[move] = {
+                "increase_in_territory": territory_size_increases[move],
+                "food_distance": distance_to_closest_food_map[move],
+                "death_timer": moves_with_death_counter_map[move], 
+            }
+
 
         info = {
             "moves_without_certain_future_death": moves_without_certain_future_death,
@@ -157,7 +204,17 @@ class SnakeDuo():
             "could_be_safe_immediate_moves": could_be_safe_immediate_moves,
             "moves_with_death_counter": moves_with_death_counter,
             "moves_that_kill_teammate": moves_that_kill_teammate,
-            "moves_that_kill_enemy": moves_that_kill_enemy
+            "moves_that_kill_enemy": moves_that_kill_enemy,
+            "state_information": state_information,
+            "times": {
+                "other_snake_die": (t2_other_snake_die - t1_other_snake_die)*1000,
+                "future_move": (t2_future_move - t1_future_move)*1000,
+                "move_food": (t2_move_food - t1_move_food)*1000,
+                "safe_move": (t2_safe_move - t1_safe_move)*1000,
+                "safish_move": (t2_safish_move - t1_safish_move)*1000,
+                "death_timer": (t2_death_timer - t1_death_timer)*1000,
+                "territory_increase": (t2_territory_increase - t1_territory_increase)*1000,
+            }
         }
 
         # main move order
@@ -165,6 +222,10 @@ class SnakeDuo():
         # go such that we have a chance of dying
         # go such that we will die, but in the most amount of turns
         # go such that we die
+
+        # change order such that, if in one direction we know we will survive for one step but die
+        # in the future, and the other direction we might die the next step, but survive the future
+        # we should go in the direction where we might die in one step
 
         # other stuff to check for
         # - if our move makes it so that our teammate snake will die, dont do it
@@ -182,42 +243,124 @@ class SnakeDuo():
         # if a herustic is empty, we are done and can return a random move that follows the heuristic
         # the heuristic should be applied in order of the list
         # if the heuristic is exhausted, we are also done and can return a random move that follows the heuristic
-        heuristic = [
-            ("no-immediate-death", [
-                ("no-future-death", [
-                    ("save-teammate", [
-                        ("kill-enemy", [
-                            ("towards-food", [])
-                        ]),
-                        ("towards-food", [])
-                    ]),
-                    ("kill-enemy", [
-                        ("towards-food", [])
-                    ]),
-                    ("towards-food", [])
+
+        #heuristic = [
+        #    ("no-immediate-death", [
+        #        ("no-future-death", [
+        #            ("save-teammate", [
+        #                ("kill-enemy", [
+        #                    ("towards-food", [])
+        #                ]),
+        #                ("towards-food", [])
+        #            ]),
+        #            ("kill-enemy", [
+        #                ("towards-food", [])
+        #            ]),
+        #            ("towards-food", [])
+        #        ]),
+        #        ("least-future-death", [
+        #            ("save-teammate", [
+        #                ("kill-enemy", [])
+        #            ]),
+        #            ("kill-enemy", []),
+        #            ("away-from-food", []),
+        #        ]),
+        #    ]),
+        #    ("chance-of-immediate-death", [
+        #        ("no-future-death", [
+        #            ("save-teammate", [
+        #                ("kill-enemy", []),
+        #            ]),
+        #        ]),
+        #        ("least-future-death", [
+        #            ("save-teammate", [
+        #                ("kill-enemy", [])
+        #            ]),
+        #            ("away-from-food", []),
+        #        ]),
+        #    ]),
+        #]
+
+        standard_end_heuristic = [
+            ("save-teammate", [
+                ("kill-enemy", [
+                    ("final-scoring", [])
                 ]),
-                ("least-future-death", [
-                    ("save-teammate", [
-                        ("kill-enemy", [])
-                    ]),
-                    ("kill-enemy", []),
-                    ("away-from-food", []),
-                ]),
+                ("final-scoring", [])
             ]),
-            ("chance-of-immediate-death", [
-                ("no-future-death", [
-                    ("save-teammate", [
-                        ("kill-enemy", []),
-                    ]),
+            ("kill-enemy", [
+                ("final-scoring", [])
+            ]),
+            ("final-scoring", [])
+        ]
+
+        about_to_die_heuristic = [
+            ("save-teammate", [
+                ("kill-enemy", [
+                    ("away-from-food", [])
                 ]),
-                ("least-future-death", [
-                    ("save-teammate", [
-                        ("kill-enemy", [])
-                    ]),
-                    ("away-from-food", []),
-                ]),
+                ("away-from-food", [])
+            ]),
+            ("kill-enemy", [
+                ("away-from-food", [])
+            ]),
+            ("away-from-food", [])
+        ]
+
+        heuristic = [
+            ("no-future-death", [
+                ("no-immediate-death", standard_end_heuristic),
+                ("chance-of-immediate-death", standard_end_heuristic),
+            ]),
+            ("least-future-death", [
+                ("no-immediate-death",  about_to_die_heuristic),
+                ("chance-of-immediate-death", about_to_die_heuristic),
             ]),
         ]
+
+
+        # state information is a dictionary of information that is passed to the scoring function
+        # for example
+        # state_information = {
+        #   "up": {
+        #     "death_timer": 5,
+        #     "food_distance": 10,
+        #     "increase_in_territory": 5,
+        #   },
+        #   "down": {
+        #   ...
+        #   }
+
+
+
+        def final_move_scoring_function(state_information):
+            move_scores = {
+                "up": 0,
+                "down": 0,
+                "left": 0,
+                "right": 0,
+            }
+
+            for move in ["up", "down", "left", "right"]:
+                # 1 is very close, 0 is very far
+                # something is weird
+                food_distance_fraction = state_information[move]["food_distance"] / (self.board.width + self.board.height)
+                # health fraction
+                # 1 is about to die, 0 is full health
+                health_fraction = 1 - snake.snake.health / 100
+                #print("move: " + move, "food_distance_fraction: " + str(food_distance_fraction), "health_fraction: " + str(health_fraction))
+
+
+                food_weight = np.exp(3*health_fraction - 2) + food_distance_fraction 
+                territory_weight = 1
+
+                move_scores[move] = food_weight + territory_weight
+            
+            return move_scores
+
+
+
+
 
         #print("Turn " + str(self.turn) + " - " + snake.name)
 
@@ -228,6 +371,7 @@ class SnakeDuo():
 
             pre_allowed_moves = copy(allowed_moves)
             for heuristic_name, next_heuristic in heuristic:
+                extra_data = {}
                 allowed_moves = copy(pre_allowed_moves)
                 #print("Checking heuristic: " + heuristic_name)
                 if heuristic_name == "no-immediate-death":
@@ -259,6 +403,13 @@ class SnakeDuo():
                     allowed_moves = [move for move in allowed_moves if move not in moves_that_kill_teammate]
                 elif heuristic_name == "kill-enemy":
                     allowed_moves = [move for move in allowed_moves if move in moves_that_kill_enemy]
+                elif heuristic_name == "final-scoring":
+                    move_scores = final_move_scoring_function(state_information)
+                    allowed_move_scores = {move: move_scores[move] for move in allowed_moves}
+                    max_score = max(allowed_move_scores.values())
+                    allowed_moves = [move for move in allowed_moves if move_scores[move] == max_score]
+                    extra_data["move_scores"] = move_scores
+                    extra_data["best_move_score"] = max_score
                 else:
                     raise Exception("Unknown heuristic name: {}".format(heuristic_name))
                 
@@ -269,7 +420,8 @@ class SnakeDuo():
                 if len(next_heuristic) == 0:
                     self.set_snake_move(snake, random.choice(allowed_moves), reason={
                             "heuristics used": str(next_heuristic_history),
-                            "info": info
+                            "info": info,
+                            "extra_data": extra_data
                         })
                     return True
                 
@@ -285,6 +437,8 @@ class SnakeDuo():
 
         find_move(heuristic, ["up", "down", "left", "right"])
 
+        snake.make_move()
+        snake.made_move = True
         return
 
 

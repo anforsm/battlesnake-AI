@@ -28,9 +28,10 @@ class Snake():
         self.head = None
         self.tail = None
     
-    def place_on_board(self, board):
+    def place_on_board(self, board, add=True):
         self.board = board
-        self.board.add_snake(self)
+        if add:
+            self.board.add_snake(self)
 
 
     def update_state(self, snake_info):
@@ -93,21 +94,45 @@ class Snake():
                 moves_without_death.append(move)
         return moves_without_death
     
+
     def get_other_snakes(self):
-        return [snake for snake in self.board.snakes if snake.client_id != self.client_id]
+        #return [snake for snake in self.board.snakes if snake.client_id != self.client_id]
+        #print("[INFO] this snake is ", self.client_id)
+        #print("[INFO] getting other snakes")
+        # get the closest snake to the head
+        closest_snake = None
+        closest_distance = math.inf
+        #print(len(self.board.snakes))
+        for other_snake in self.board.snakes:
+            if other_snake.client_id != self.client_id:
+                if not other_snake.is_dead:
+                    #print("Other snake: ", other_snake.client_id + " with body " + str(other_snake.body))
+                    distance = self.get_distance_to(other_snake.head.x, other_snake.head.y)
+                    if distance < closest_distance:
+                        closest_distance = distance
+                        closest_snake = other_snake
+        if closest_snake is None:
+            return []
+        return [closest_snake]
+    
+
     
     def other_snake_will_die_because_of_move(self, move):
         depth = 10
         snakes_that_die_either_way = []
-        for snake in self.get_other_snakes():
+        other_snakes = self.get_other_snakes()
+        if len(other_snakes) == 0:
+            return []
+        for snake in other_snakes:
             if len(snake.get_moves_without_future_death(prediction_depth=depth)) == 0:
-                snakes_that_die_either_way.append(snake)
+                snakes_that_die_either_way.append(snake.client_id)
 
         snakes_that_will_die_after_my_move = []
         moved_snake = self.simulate_move(move)
-        for snake in moved_snake.get_other_snakes():
-            if len(snake.get_moves_without_future_death(prediction_depth=depth)) == 0:
-                snakes_that_will_die_after_my_move.append(snake)
+        for snake in other_snakes:
+            new_snake = moved_snake.board.get_snake(snake.client_id)
+            if len(new_snake.get_moves_without_future_death(prediction_depth=depth)) == 0:
+                snakes_that_will_die_after_my_move.append(snake.client_id)
         
         snakes_that_die_because_of_my_move = []
         for snake in snakes_that_will_die_after_my_move:
@@ -115,11 +140,9 @@ class Snake():
                 snakes_that_die_because_of_my_move.append(snake)
         
         return snakes_that_die_because_of_my_move
-    
 
 
 
-    
     # returns how many moves the snake can make before it dies
     def alternative_futures(self, direction, move_history = None, max_depth=10):
         if move_history is None:
@@ -193,7 +216,8 @@ class ControllableSnake():
         self.net = SnakeNetworkManager(self)
         self.is_enemy = False
         self.client_id = None
-
+        self.made_move = False
+    
     # info is called when you create your Battlesnake on play.battlesnake.com
     # and controls your Battlesnake's appearance
     # TIP: If you open your Battlesnake URL in a browser you should see this data
@@ -227,6 +251,13 @@ class ControllableSnake():
         move = self.team.get_move(self)
         return {"move": move}
     
+    def get_potential_territory_increase(self, move):
+        current_territory = self.team.board.b.get_territory_size([s.snake for s in self.team.snakes])
+        new_snake = self.snake.simulate_move(move)
+        new_board = new_snake.board
+        new_territory = new_board.get_territory_size([new_board.snake_map[s.client_id] for s in self.team.snakes])
+        return new_territory - current_territory
+    
     def get_safe_moves(self, board):
         if self.snake.is_dead:
             return []
@@ -248,8 +279,13 @@ class ControllableSnake():
                 # check any of the adjacent cells for other snakes
                 for cell in adjacent_cells:
                     if cell.is_snake_head and cell.snake != self:
-                        adjacent_cell_has_enemy_snake = True
-                        break
+                        # check if it is teammate snaek
+                        if cell.snake.client_id == self.team.get_other_snake(self).client_id:
+                            if not self.team.get_other_snake(self).made_move:
+                                adjacent_cell_has_enemy_snake = True
+                        else:
+                            adjacent_cell_has_enemy_snake = True
+                            break
 
                 if not adjacent_cell_has_enemy_snake:
                     safe_moves.append(move)
@@ -272,11 +308,15 @@ class ControllableSnake():
         return closest_food
     
     def get_direction_of_food(self, board):
-        closest_food = self.get_closest_food_pos(board)["cell"]
+        closest_food = self.get_closest_food_pos(board)
         if closest_food is None:
             return None
         else:
-            return board.b.get_direction_between_cells(self.snake.head, closest_food)
+            return board.b.get_direction_between_cells(self.snake.head, closest_food["cell"]), closest_food["distance"] 
+    
+    def make_move(self):
+        move = self.team.get_move(self)
+        self.snake.move(move)
 
     def copy_to_board(self, board):
         new_snake = ControllableSnake(self.id, self.name)

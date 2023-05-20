@@ -143,10 +143,11 @@ class GeneralBoard:
     
     # adds a snake to the board
     # and places it on the correct cells
-    def add_snake(self, snake):
+    def add_snake(self, snake, place=True):
         self.snakes.append(snake)
         self.snake_map[snake.client_id] = snake
-        self.place_snake(snake)
+        if place:
+            self.place_snake(snake)
     
     # places a snake on the correct cells
     def place_snake(self, snake):
@@ -155,8 +156,8 @@ class GeneralBoard:
             return
         for cell in snake.body:
             cell.set_snake(snake)
-            if snake.head == cell:
-                cell.is_snake_head = True
+
+        snake.head.is_snake_head = True
     
     # unpplaces a snakes from the board
     def clear_snake(self, snake):
@@ -217,6 +218,16 @@ class GeneralBoard:
     def move_snake(self, snake, direction):
         snake.move(direction)
         self.place_snakes()
+    
+    def get_territory_size(self, snakes):
+        self.calculate_closest_snake()
+        territory_size = 0
+        for cell in self.all_cells:
+            for closest_snake in cell.closest_snakes:
+                if closest_snake in snakes:
+                    territory_size += 1
+                    break
+        return territory_size
     
     def copy(self, new_board=None):
         if new_board is None:
@@ -341,6 +352,8 @@ class GeneralBoard:
 class Board():
     def __init__(self, width, height, our_snakes, all_snakes_json):
         self.b = GeneralBoard(width, height)
+        self.width = width
+        self.height = height
 
         self.our_snakes = our_snakes
         self.our_snakes_map = {}
@@ -356,8 +369,11 @@ class Board():
             snake_id = snake_json["id"]
 
             snake_obj = Snake(snake_id)
-            snake_obj.place_on_board(self.b)
+            snake_obj.board = self.b
+            self.b.add_snake(snake_obj, place=False)
             snake_obj.update_state(snake_json)
+
+            snake_obj.place_on_board(self.b, add=False)
 
             if snake_id in self.our_snakes_map:
                 self.our_snakes_map[snake_id].snake = snake_obj
