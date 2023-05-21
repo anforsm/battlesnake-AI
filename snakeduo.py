@@ -10,6 +10,7 @@ from datetime import datetime
 from copy import copy
 import numpy as np
 import time
+from multiprocessing import Pool
 
 class SnakeDuo():
     def __init__(self, name, color, snake1, snake2, save_replay=False):
@@ -41,6 +42,8 @@ class SnakeDuo():
         self.snake2_move = "up"
 
         self.move_logs = []
+
+        self.worker_pool = Pool(processes=4)
 
     
     def snakes_initialized(self):
@@ -131,11 +134,11 @@ class SnakeDuo():
         other_snake = self.get_other_snake(snake)
         moves_that_kill_teammate = []
         moves_that_kill_enemy = []
+
         t1_other_snake_die = time.time()
-        #print("[INFO] This snake is " + str(snake.client_id))
-        for move in ["up", "down", "left", "right"]:
-            #print("[INFO] Checking move " + move)
-            future_dead_snakes = snake.snake.other_snake_will_die_because_of_move(move)
+        future_dead_snakes_per_move = self.worker_pool.map(snake.snake.other_snake_will_die_because_of_move, ["up", "down", "left", "right"])
+
+        for move, future_dead_snakes in zip(["up", "down", "left", "right"], future_dead_snakes_per_move):
             for dead_snake in future_dead_snakes:
                 if dead_snake == other_snake.client_id:
                     moves_that_kill_teammate.append(move)
@@ -145,9 +148,9 @@ class SnakeDuo():
         
 
 
-        t1_future_move = time.time()
-        moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
-        t2_future_move = time.time()
+       # t1_future_move = time.time()
+       # moves_without_certain_future_death = snake.snake.get_moves_without_future_death()
+       # t2_future_move = time.time()
 
         t1_move_food = time.time()
         moves_in_direction_of_food, distance_to_closest_food = snake.get_direction_of_food(self.board)
@@ -167,12 +170,15 @@ class SnakeDuo():
         #could_be_safe_immediate_moves = []
 
         t1_death_timer = time.time()
+        moves_without_certain_future_death = []
         moves_with_death_counter = []
         moves_with_death_counter_map = {}
-        for move in ["up", "down", "left", "right"]:
-            death_timer = len(snake.snake.alternative_futures(move))
+        death_timers = self.worker_pool.map(snake.snake.get_death_timer, ["up", "down", "left", "right"])
+        for move, death_timer in zip(["up", "down", "left", "right"], death_timers):
             moves_with_death_counter.append((move, death_timer))
             moves_with_death_counter_map[move] = death_timer
+            if death_timer == 10:
+                moves_without_certain_future_death.append(move)
         t2_death_timer = time.time()
         
         t1_territory_increase = time.time()
@@ -185,6 +191,11 @@ class SnakeDuo():
             )
         t2_territory_increase = time.time()
 
+        t1_edge_distance = time.time()
+        edge_distances = list(map(snake.snake.distance_to_edge_after_move, ["up", "down", "left", "right"]))
+        edge_distances = {move: edge_distances[i] for i, move in enumerate(["up", "down", "left", "right"])}
+        t2_edge_distance = time.time()
+
 
         state_information = {
         }
@@ -194,6 +205,7 @@ class SnakeDuo():
                 "increase_in_territory": territory_size_increases[move],
                 "food_distance": distance_to_closest_food_map[move],
                 "death_timer": moves_with_death_counter_map[move], 
+                "distance_to_edge": edge_distances[move],
             }
 
 
@@ -208,12 +220,12 @@ class SnakeDuo():
             "state_information": state_information,
             "times": {
                 "other_snake_die": (t2_other_snake_die - t1_other_snake_die)*1000,
-                "future_move": (t2_future_move - t1_future_move)*1000,
                 "move_food": (t2_move_food - t1_move_food)*1000,
                 "safe_move": (t2_safe_move - t1_safe_move)*1000,
                 "safish_move": (t2_safish_move - t1_safish_move)*1000,
                 "death_timer": (t2_death_timer - t1_death_timer)*1000,
                 "territory_increase": (t2_territory_increase - t1_territory_increase)*1000,
+                "edge_distance": (t2_edge_distance - t1_edge_distance)*1000,
             }
         }
 
@@ -326,6 +338,7 @@ class SnakeDuo():
         #     "death_timer": 5,
         #     "food_distance": 10,
         #     "increase_in_territory": 5,
+        #     "distance_to_edge": 1,
         #   },
         #   "down": {
         #   ...
@@ -341,6 +354,14 @@ class SnakeDuo():
                 "right": 0,
             }
 
+            move_score_information = {
+                "up": {},
+                "down": {},
+                "left": {},
+                "right": {},
+            }
+
+
             for move in ["up", "down", "left", "right"]:
                 # 1 is very close, 0 is very far
                 # something is weird
@@ -351,12 +372,15 @@ class SnakeDuo():
                 #print("move: " + move, "food_distance_fraction: " + str(food_distance_fraction), "health_fraction: " + str(health_fraction))
 
 
-                food_weight = np.exp(3*health_fraction - 2) + food_distance_fraction 
-                territory_weight = 1
+                edge_weight = -3 if state_information[move]["distance_to_edge"] == 0 else 0
+                food_weight = np.exp(8*health_fraction - 4) * food_distance_fraction 
+                territory_weight = max(-20, min(20, state_information[move]["increase_in_territory"])) / 10
 
-                move_scores[move] = food_weight + territory_weight
+                move_scores[move] = food_weight + territory_weight + edge_weight
+                move_score_information[move]["food_weight"] = food_weight
+                move_score_information[move]["territory_weight"] = territory_weight
             
-            return move_scores
+            return move_scores, move_score_information
 
 
 
@@ -404,12 +428,13 @@ class SnakeDuo():
                 elif heuristic_name == "kill-enemy":
                     allowed_moves = [move for move in allowed_moves if move in moves_that_kill_enemy]
                 elif heuristic_name == "final-scoring":
-                    move_scores = final_move_scoring_function(state_information)
+                    move_scores, infos = final_move_scoring_function(state_information)
                     allowed_move_scores = {move: move_scores[move] for move in allowed_moves}
                     max_score = max(allowed_move_scores.values())
                     allowed_moves = [move for move in allowed_moves if move_scores[move] == max_score]
                     extra_data["move_scores"] = move_scores
                     extra_data["best_move_score"] = max_score
+                    extra_data["move_score_separated"] = infos
                 else:
                     raise Exception("Unknown heuristic name: {}".format(heuristic_name))
                 

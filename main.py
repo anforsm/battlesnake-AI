@@ -13,7 +13,7 @@
 import random
 import typing
 
-from networkmanager import network
+from networkmanager import NetworkManager
 from snakeduo import SnakeDuo
 from snake import Snake, ControllableSnake as CSnake
 
@@ -118,4 +118,5 @@ if __name__ == "__main__":
     #snakes = duo1.snakes# + duo2.snakes
 
     #network.set_snakes(snakes)
+    network = NetworkManager()
     network.start_server()
