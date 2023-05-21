@@ -4,10 +4,62 @@ import os
 import logging
 from snakeduo import SnakeDuo
 from snake import Snake, ControllableSnake as CSnake
-import threading
-from multiprocessing import Process, Lock, Manager
+from multiprocessing import Process, Lock, Manager, Queue, Pool
 
 our_color = "#ff4e03"
+
+class Game():
+    def __init__(self, game_id):
+        self.game_id = game_id
+        self.snakes = {}
+        self.teams = {}
+
+def game_process(game_id, input_queue, output_queue):
+    game = Game(game_id)
+    while True:
+        request_type, snake_id, request_data = input_queue.get()
+
+        if request_type == "start":
+            response = start_function(game, snake_id, request_data)
+        elif request_type == "move":
+            response = move_function(game, snake_id, request_data)
+        elif request_type == "end":
+            response, all_ended = end_function(game, snake_id, request_data)
+            output_queue.put(all_ended)
+        else:
+            print("Invalid request type: ", request_type)
+        
+        output_queue.put(response)
+
+def start_function(game, snake_id, request_data):
+    team_id = 1 if snake_id == "1" or snake_id == "2" else 2
+
+    if not team_id in game.teams:
+        if team_id == 1:
+            team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
+        elif team_id == 2:
+            team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
+
+        game.teams[team_id] = team
+        game.snakes[team.snake1.id] = team.snake1
+        game.snakes[team.snake2.id] = team.snake2
+
+    return game.snakes[snake_id].net.on_start(request_data)
+
+def end_function(game, snake_id, request_data):
+    result = game.snakes[snake_id].net.on_end(request_data)
+    teams = game.teams.values()
+
+    all_teams_ended = True
+    for team in teams:
+        if not team.game_ended:
+            all_teams_ended = False
+            break
+
+    return result, all_teams_ended
+
+def move_function(game, snake_id, request_data):
+    return game.snakes[snake_id].net.on_move(request_data)
 
 class SingletonMeta(type):
     _instances = {}
@@ -24,42 +76,12 @@ class NetworkManager(metaclass=SingletonMeta):
         self.snakes = []
         self.games = {}
         self.snake_ids = [1, 2, 3, 4]
-        self.thread_local_storage = threading.local()
-        self.game_locks = {}
-    
-    def create_game(self, game_id):
-        if game_id not in self.games:
-            print(f"[INFO] Game {game_id[:3]} created")
-            self.games[game_id] = {
-                "snakes": {},
-                "teams": {}
-            }
-    
-    def create_team(self, game_id, team_id):
-        if team_id in self.games[game_id]["teams"]:
-            return
-
-        if team_id == 1:
-            team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
-        elif team_id == 2:
-            team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
-
-        self.games[game_id]["teams"][team_id] = team
-        self.games[game_id]["snakes"][team.snake1.id] = team.snake1
-        self.games[game_id]["snakes"][team.snake2.id] = team.snake2
-
-        return self.games[game_id]
-
-    
-    def get_snake(self, game_id, snake_id):
-        return self.games[game_id]["snakes"][snake_id]
-
-    def set_snakes(self, snakes):
-        self.snakes = snakes
-        for snake in self.snakes:
-            self.snake_map[str(snake.id)] = snake
-        return self
-
+        self.live_games = set()
+        self.input_queues = {}
+        self.output_queues = {}
+        self.locks = {}
+        self.processing_pool = Pool(processes=16)
+        self.game_start_lock = Lock()
     
     def create_endpoints(self):
 
@@ -80,72 +102,57 @@ class NetworkManager(metaclass=SingletonMeta):
         
         @self.app.post("/<snake_id>/start/")
         def on_start(snake_id):
-            request_json = request.get_json()
-            game_id = request_json["game"]["id"]
+            with self.game_start_lock:
+                request_json = request.get_json()
+                game_id = request_json["game"]["id"]
 
-            if not hasattr(self.thread_local_storage, game_id):
-                setattr(self.thread_local_storage, game_id, {})
+                if game_id not in self.live_games:
+                    print("[INFO] Game started, " + game_id[:3])
+                    self.live_games.add(game_id)
+                    self.locks[game_id] = Lock()
+                    self.input_queues[game_id] = Queue()
+                    self.output_queues[game_id] = Queue()
+                    Process(target=game_process, args=(game_id, self.input_queues[game_id], self.output_queues[game_id])).start()
             
-            lock = self.game_locks.setdefault(game_id, threading.Lock())
-            with lock:
-                team_id = 1 if snake_id == "1" or snake_id == "2" else 2 
+                with self.locks[game_id]:
+                    self.input_queues[game_id].put(("start", snake_id, request_json))
+                    response = self.output_queues[game_id].get()
+            
+                return response
 
-                state = getattr(self.thread_local_storage, game_id)
-                if not "game" in state:
-                    state["game"] = {
-                        "snakes": {},
-                        "teams": {}
-                    }
-
-                if not team_id in state["game"]["teams"]:
-                    if team_id == 1:
-                        team = SnakeDuo("Team 1", our_color, CSnake("1", "Snake 1"), CSnake("2", "Snake 2"), save_replay=True)
-                    elif team_id == 2:
-                        team = SnakeDuo("Team 2", "#00FF00", CSnake("3", "Snake 1"), CSnake("4", "Snake 2"), save_replay=False)
-
-                    state["game"]["teams"][team_id] = team
-                    state["game"]["snakes"][team.snake1.id] = team.snake1
-                    state["game"]["snakes"][team.snake2.id] = team.snake2
-
-
-                return state["game"]["snakes"][snake_id].net.on_start(request_json)
-                #return self.get_snake(game_id, snake_id).net.on_start(request_json)
         
         @self.app.post("/<snake_id>/move/")
         def on_move(snake_id):
             request_json = request.get_json()
             game_id = request_json["game"]["id"]
-            lock = self.game_locks.setdefault(game_id, threading.Lock())
-            with lock:
-                return getattr(self.thread_local_storage, game_id)["game"]["snakes"][snake_id].net.on_move(request_json)
-            #return self.get_snake(game_id, snake_id).net.on_move(request_json)
+
+            with self.locks[game_id]:
+                self.input_queues[game_id].put(("move", snake_id, request_json))
+                response = self.output_queues[game_id].get()
+
+            return response
+
         
         @self.app.post("/<snake_id>/end/")
         def on_end(snake_id):
             request_json = request.get_json()
             game_id = request_json["game"]["id"]
-            lock = self.game_locks.setdefault(game_id, threading.Lock())
-            with lock:
-                state = getattr(self.thread_local_storage, game_id)
-                game_end_res = state["game"]["snakes"][snake_id].net.on_end(request_json)
-                teams = state["game"]["teams"].values()
 
-                #game_end_res = self.get_snake(game_id, snake_id).net.on_end(request_json)
-                #teams = self.games[game_id]["teams"].values()
-                all_teams_ended = True
-                for team in teams:
-                    if not team.game_ended:
-                        all_teams_ended = False
-                        break
+            with self.locks[game_id]:
+                self.input_queues[game_id].put(("end", snake_id, request_json))
+                all_teams_ended = self.output_queues[game_id].get()
+                response = self.output_queues[game_id].get()
 
-                if all_teams_ended:
-                    print(f"[INFO] Deleted game {game_id[:3]} from database")
-                    delattr(self.thread_local_storage, game_id)
-                    del self.game_locks[game_id]
-                    #self.delete_game(game_id)
-                return game_end_res
+            if all_teams_ended:
+                del self.locks[game_id]
+                del self.input_queues[game_id]
+                del self.output_queues[game_id]
+                self.live_games.remove(game_id)
+                print("[INFO] Game ended, deleting game", game_id[:3])
 
-            
+
+            return response
+
         @self.app.after_request
         def identify_server(response):
             response.headers.set(
@@ -157,8 +164,9 @@ class NetworkManager(metaclass=SingletonMeta):
         del self.games[game_id]
 
     def start_server(self):
-        host = "0.0.0.0"
+        #host = "0.0.0.0"
         #host = "10.10.20.13"
+        host = "10.10.10.101"
         port = int(os.environ.get("PORT", "8000"))
 
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -168,7 +176,4 @@ class NetworkManager(metaclass=SingletonMeta):
         def ping():
             return "pong"
 
-        self.app.run(host=host, port=port, debug=True, threaded=False)
-
-network = NetworkManager()
-
+        self.app.run(host=host, port=port, debug=True, threaded=True)

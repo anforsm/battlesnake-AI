@@ -49,25 +49,32 @@ class Snake():
     def move(self, direction):
         if self.is_dead:
             return
+
         coordinate_offset = {
             "up": (0, 1),
             "down": (0, -1),
             "left": (-1, 0),
             "right": (1, 0)
         }[direction]
+
+        new_head = self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1])
+        if new_head is None:
+            self.kill()
+            return
+        
+        if not new_head.is_food():
+            self.body.pop()
+            self.tail.clear_snake_info()
+            self.tail = self.body[-1]
+
         self.head.is_snake_head = False
         # move head in direction
-        new_head = self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1])
-        if new_head is None or new_head.is_occupied():
+        if new_head.is_occupied():
             self.kill()
             return
         self.body.insert(0, new_head)
         self.head = new_head 
         new_head.set_snake(self, True)
-        if not self.head.is_food():
-            self.body.pop()
-            self.tail.clear_snake_info()
-            self.tail = self.body[-1]
 
     
     def kill(self):
@@ -94,9 +101,24 @@ class Snake():
                 moves_without_death.append(move)
         return moves_without_death
     
+    def distance_to_edge(self):
+        return min(self.head.x, self.head.y, self.board.width - self.head.x, self.board.height - self.head.y)
+    
+    def distance_to_edge_after_move(self, move):
+        coordinate_offset = {
+            "up": (0, 1),
+            "down": (0, -1),
+            "left": (-1, 0),
+            "right": (1, 0)
+        }[move]
+        new_head = self.board.get_cell(self.head.x + coordinate_offset[0], self.head.y + coordinate_offset[1])
+        if new_head is None:
+            return 0
+        return min(new_head.x, new_head.y, self.board.width - 1 - new_head.x, self.board.height - 1 - new_head.y)
+    
 
     def get_other_snakes(self):
-        #return [snake for snake in self.board.snakes if snake.client_id != self.client_id]
+        return [snake for snake in self.board.snakes if snake.client_id != self.client_id]
         #print("[INFO] this snake is ", self.client_id)
         #print("[INFO] getting other snakes")
         # get the closest snake to the head
@@ -142,6 +164,8 @@ class Snake():
         return snakes_that_die_because_of_my_move
 
 
+    def get_death_timer(self, move, max_depth=10):
+        return len(self.alternative_futures(move, max_depth=max_depth))
 
     # returns how many moves the snake can make before it dies
     def alternative_futures(self, direction, move_history = None, max_depth=10):
